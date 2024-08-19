@@ -1,6 +1,6 @@
 use arrayref::{array_ref, array_refs};
 use solana_sdk::pubkey::Pubkey;
-use crate::pool::PoolOperation;
+use crate::pools::{MarketOperation, MarketSerializer, PubkeyPair};
 
 pub struct OrcaMarket {
     pub whirlpools_config: Pubkey, // 32
@@ -21,10 +21,10 @@ pub struct OrcaMarket {
     pub token_vault_b: Pubkey, // 32
     pub fee_growth_global_b: u128, // 16
     pub reward_last_updated_timestamp: u64, // 8
-    pub reward_infos: [WhirlpoolRewardInfo; 3] // 128 * 3 = 384
+    pub reward_infos: [WhirlpoolRewardInfo; 3] // 128 * 3; 384
 }
 
-impl PoolOperation for OrcaMarket {
+impl MarketSerializer for OrcaMarket {
     fn unpack_data(data: &Vec<u8>) -> Self {
         let src = array_ref![data, 0, 653]; // 653
         let (discriminator, whirlpools_config, whirlpool_bump, tick_spacing, tick_spacing_seed, fee_rate, protocol_fee_rate, liquidity, sqrt_price, tick_current_index, protocol_fee_owed_a, protocol_fee_owed_b, token_mint_a, token_vault_a, fee_growth_global_a, token_mint_b, token_vault_b, fee_growth_global_b, reward_last_updated_timestamp, reward_infos) =
@@ -50,6 +50,15 @@ impl PoolOperation for OrcaMarket {
             fee_growth_global_b: u128::from_le_bytes(*fee_growth_global_b),
             reward_last_updated_timestamp: u64::from_le_bytes(*reward_last_updated_timestamp),
             reward_infos: WhirlpoolRewardInfo::unpack_data_set(*reward_infos)
+        }
+    }
+}
+
+impl MarketOperation for OrcaMarket {
+    fn get_mint_pair(&self) -> PubkeyPair {
+        PubkeyPair {
+            pubkey_a: self.token_mint_a,
+            pubkey_b: self.token_mint_b,
         }
     }
 }

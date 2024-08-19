@@ -1,8 +1,6 @@
-use std::env::var;
-use std::mem::transmute;
 use arrayref::{array_ref, array_refs};
 use solana_sdk::pubkey::Pubkey;
-use crate::pool::PoolOperation;
+use crate::pools::{MarketOperation, MarketSerializer, PubkeyPair};
 
 pub struct MeteoraMarket {
     pub parameters: StaticParameters, // 32
@@ -37,7 +35,7 @@ pub struct MeteoraMarket {
     pub _reserved: [u8; 24], // 24
 }
 
-impl PoolOperation for MeteoraMarket {
+impl MarketSerializer for MeteoraMarket {
     fn unpack_data(data: &Vec<u8>) -> Self {
         let src = array_ref![data, 0, 904];
         let (discriminator, parameters, v_parameters, bump_seed, bin_step_seed, pair_type, active_id, bin_step, status, require_base_factor_seed, base_factor_seed, padding1, token_x_mint, token_y_mint, reserve_x, reserve_y, protocol_fee, fee_owner, reward_infos, oracle, bit_array_bitmap, last_updated_at, whitelisted_wallet, pre_activation_swap_address, base_key, activation_slot, pre_activation_slot_duration, padding2, lock_durations_in_slot, creator, reserved) =
@@ -74,6 +72,15 @@ impl PoolOperation for MeteoraMarket {
             lock_durations_in_slot: u64::from_le_bytes(*lock_durations_in_slot),
             creator: Pubkey::new_from_array(*creator),
             _reserved: *reserved,
+        }
+    }
+}
+
+impl MarketOperation for MeteoraMarket {
+    fn get_mint_pair(&self) -> PubkeyPair {
+        PubkeyPair {
+            pubkey_a: self.token_x_mint,
+            pubkey_b: self.token_y_mint
         }
     }
 }

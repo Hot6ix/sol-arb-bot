@@ -1,16 +1,13 @@
 mod token;
 mod probe;
-mod pool;
 mod constants;
-mod orca;
-mod meteora;
+mod pools;
 
 use std::str::FromStr;
 use actix::{Actor};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
-use crate::meteora::MeteoraMarket;
-use crate::pool::PoolOperation;
+use crate::pools::{Market, resolve_market_data};
 
 #[actix::main]
 async fn main() {
@@ -27,8 +24,16 @@ async fn main() {
 
     let meteora_jup_wsol_pubkey = Pubkey::from_str("7qt1qBnQ5CNNpMH1no6jYAzuyazP5QWXsUZB7dot5kga").unwrap();
     let account_data = rpc_client.get_account_data(&meteora_jup_wsol_pubkey).await.unwrap();
+    // println!("{}", account_data.len());
+    // let meteora = MeteoraMarket::unpack_data(&account_data);
+    // println!("token_x: {}, token_y: {}", meteora.token_x_mint, meteora.token_y_mint);
+
+    // let raydium_jup_wsol_pubkey = Pubkey::from_str("EZVkeboWeXygtq8LMyENHyXdF5wpYrtExRNH9UwB1qYw").unwrap();
+    // let account_data = rpc_client.get_account_data(&raydium_jup_wsol_pubkey).await.unwrap();
     println!("{}", account_data.len());
-    let meteora = MeteoraMarket::unpack_data(&account_data);
+    let market = resolve_market_data(Market::METEORA, &account_data);
+    let a = market.get_mint_pair();
+    println!("{}, {}", a.pubkey_a, a.pubkey_b);
 
     // let account_data_as_string = {
     //     let d = &account_data;

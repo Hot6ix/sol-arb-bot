@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::account::Account;
 use crate::constants::RPC_URL;
-use crate::pool::PubkeyPair;
+use crate::pools::PubkeyPair;
 
 pub struct Probe {
     pub rpc_client: RpcClient,
