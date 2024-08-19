@@ -61,6 +61,13 @@ impl MarketOperation for OrcaMarket {
             pubkey_b: self.token_mint_b,
         }
     }
+
+    fn get_pool_pair(&self) -> PubkeyPair {
+        PubkeyPair {
+            pubkey_a: self.token_vault_a,
+            pubkey_b: self.token_vault_b
+        }
+    }
 }
 
 pub struct WhirlpoolRewardInfo {
@@ -72,7 +79,7 @@ pub struct WhirlpoolRewardInfo {
 }
 
 impl WhirlpoolRewardInfo {
-    pub fn unpack_data(data: Vec<u8>) -> WhirlpoolRewardInfo {
+    pub fn unpack_data(data: &Vec<u8>) -> WhirlpoolRewardInfo {
         let src = array_ref![data, 0, 128];
         let (mint, vault, authority, emissions_per_second_x64, growth_global_x64) =
             array_refs![src, 32, 32, 32, 16, 16];
@@ -92,9 +99,9 @@ impl WhirlpoolRewardInfo {
         let (second, third) = rest.split_at_checked(index).unwrap();
 
         [
-            Self::unpack_data(Vec::from(first)),
-            Self::unpack_data(Vec::from(second)),
-            Self::unpack_data(Vec::from(third))
+            Self::unpack_data(&Vec::from(first)),
+            Self::unpack_data(&Vec::from(second)),
+            Self::unpack_data(&Vec::from(third))
         ]
     }
 }

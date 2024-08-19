@@ -83,6 +83,13 @@ impl MarketOperation for MeteoraMarket {
             pubkey_b: self.token_y_mint
         }
     }
+
+    fn get_pool_pair(&self) -> PubkeyPair {
+        PubkeyPair {
+            pubkey_a: self.reserve_x,
+            pubkey_b: self.reserve_y
+        }
+    }
 }
 
 pub struct StaticParameters {
@@ -175,7 +182,7 @@ pub struct RewardInfo {
 }
 
 impl RewardInfo {
-    pub fn unpack_data(data: Vec<u8>) -> RewardInfo {
+    pub fn unpack_data(data: &Vec<u8>) -> RewardInfo {
         let src = array_ref![data, 0, 144];
         let (mint, vault, funder, reward_duration, reward_duration_end, reward_rate, last_update_time, cumulative_seconds_with_empty_liquidity_reward) =
             array_refs![src, 32, 32, 32, 8, 8, 16, 8, 8];
@@ -196,8 +203,8 @@ impl RewardInfo {
         let (first, second) = data.split_at_checked(data.len() / 2).unwrap();
 
         [
-            Self::unpack_data(Vec::from(first)),
-            Self::unpack_data(Vec::from(second))
+            Self::unpack_data(&Vec::from(first)),
+            Self::unpack_data(&Vec::from(second))
         ]
     }
 }

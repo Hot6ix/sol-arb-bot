@@ -20,6 +20,7 @@ pub trait MarketSerializer {
 
 pub trait MarketOperation {
     fn get_mint_pair(&self) -> PubkeyPair;
+    fn get_pool_pair(&self) -> PubkeyPair;
 }
 
 pub fn resolve_market_data(market: Market, data: &Vec<u8>) -> Box<dyn MarketOperation> {

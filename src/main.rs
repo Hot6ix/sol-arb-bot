@@ -22,18 +22,25 @@ async fn main() {
     // let account_data = rpc_client.get_account_data(&orca_jup_wsol_pubkey).await.unwrap();
     // let orca = OrcaMarket::unpack_data(&account_data);
 
-    let meteora_jup_wsol_pubkey = Pubkey::from_str("7qt1qBnQ5CNNpMH1no6jYAzuyazP5QWXsUZB7dot5kga").unwrap();
-    let account_data = rpc_client.get_account_data(&meteora_jup_wsol_pubkey).await.unwrap();
+    // let meteora_jup_wsol_pubkey = Pubkey::from_str("7qt1qBnQ5CNNpMH1no6jYAzuyazP5QWXsUZB7dot5kga").unwrap();
+    // let account_data = rpc_client.get_account_data(&meteora_jup_wsol_pubkey).await.unwrap();
     // println!("{}", account_data.len());
     // let meteora = MeteoraMarket::unpack_data(&account_data);
     // println!("token_x: {}, token_y: {}", meteora.token_x_mint, meteora.token_y_mint);
 
     // let raydium_jup_wsol_pubkey = Pubkey::from_str("EZVkeboWeXygtq8LMyENHyXdF5wpYrtExRNH9UwB1qYw").unwrap();
     // let account_data = rpc_client.get_account_data(&raydium_jup_wsol_pubkey).await.unwrap();
+
+    let lifinity_jup_wsol_pubkey = Pubkey::from_str("7GXdv2r3fEuzAwEBZwtNoEjgFfrZdtHyNKBTLYfFwaAM").unwrap();
+    let account_data = rpc_client.get_account_data(&lifinity_jup_wsol_pubkey).await.unwrap();
     println!("{}", account_data.len());
-    let market = resolve_market_data(Market::METEORA, &account_data);
+    let market = resolve_market_data(Market::LIFINITY, &account_data);
     let a = market.get_mint_pair();
     println!("{}, {}", a.pubkey_a, a.pubkey_b);
+    let b = market.get_pool_pair();
+    println!("{}, {}", b.pubkey_a, b.pubkey_b);
+
+
 
     // let account_data_as_string = {
     //     let d = &account_data;
