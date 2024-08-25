@@ -1,8 +1,11 @@
 use arrayref::{array_ref, array_refs};
 use num_enum::{TryFromPrimitive};
+use solana_sdk::account::Account;
 use solana_sdk::program_error::ProgramError;
 use solana_sdk::program_option::COption;
 use solana_sdk::pubkey::Pubkey;
+use time::OffsetDateTime;
+use crate::pools::{Market, MarketOperation, resolve_market_data};
 
 #[repr(u8)]
 #[derive(Eq, PartialEq, TryFromPrimitive)]
@@ -57,5 +60,54 @@ impl TokenAccount {
             [1, 0, 0, 0] => Ok(COption::Some(u64::from_le_bytes(*body))),
             _ => Err(ProgramError::InvalidAccountData),
         }
+    }
+}
+
+pub struct TrackedAccount {
+    pub time: OffsetDateTime,
+    pub market: Market,
+    pub account: Account
+}
+
+impl TrackedAccount {
+    pub fn new(time: OffsetDateTime, market: Market, account: Account) -> TrackedAccount {
+        TrackedAccount {
+            time,
+            market,
+            account
+        }
+    }
+
+    pub fn get_market_operation(&self) -> Box<dyn MarketOperation> {
+        resolve_market_data(&self.market, &self.account.data)
+    }
+}
+
+pub struct MarketPool {
+    pub accounts: Vec<TrackedAccount>
+}
+
+impl MarketPool {
+    pub fn new() -> MarketPool {
+        MarketPool {
+            accounts: Vec::new(),
+        }
+    }
+
+    pub fn replace(&mut self, data: Vec<TrackedAccount>) {
+        let mut accounts = &mut self.accounts;
+
+        data.into_iter().for_each(|new| {
+           // let index = accounts.iter().position(|old| {
+           //     new.account.
+           // });
+           //
+           //  if index.is_none() {
+           //      accounts.push(new);
+           //  }
+           //  else {
+           //      accounts[index] = new;
+           //  }
+        });
     }
 }

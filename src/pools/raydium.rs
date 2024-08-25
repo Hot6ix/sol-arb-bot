@@ -1,6 +1,6 @@
 use arrayref::{array_ref, array_refs};
 use solana_sdk::pubkey::Pubkey;
-use crate::pools::{MarketOperation, MarketSerializer, PubkeyPair};
+use crate::pools::{Market, MarketOperation, MarketSerializer, PubkeyPair};
 
 pub struct RaydiumMarket {
     pub bump: [u8; 1], // 1
@@ -105,6 +105,10 @@ impl MarketOperation for RaydiumMarket {
             pubkey_a: self.token_vault_0,
             pubkey_b: self.token_vault_1
         }
+    }
+
+    fn get_market_provider(&self) -> Market {
+        Market::RAYDIUM
     }
 }
 

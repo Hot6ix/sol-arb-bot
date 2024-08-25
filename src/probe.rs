@@ -1,38 +1,67 @@
+use std::collections::HashMap;
 use std::fmt::Debug;
-use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::account::Account;
-use crate::constants::RPC_URL;
-use crate::pools::PubkeyPair;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use solana_client::rpc_client::RpcClient;
+use solana_sdk::pubkey::Pubkey;
+use time::OffsetDateTime;
+use tokio::spawn;
+use tokio::time::sleep;
+use crate::pools::Market;
+use crate::token::{MarketPool, TrackedAccount};
 
 pub struct Probe {
-    pub rpc_client: RpcClient,
-    pub token_pool_pair: PubkeyPair
+    pub pools: Arc<HashMap<Market, Vec<Pubkey>>>,
+    pub market_accounts: Arc<Mutex<MarketPool>>
 }
 
 impl Probe {
-    pub fn new(token_pool_pair: PubkeyPair) -> Probe {
-        let rpc_client = RpcClient::new(RPC_URL.to_string());
-
+    pub fn new(pools: Arc<HashMap<Market, Vec<Pubkey>>>, market_accounts: Arc<Mutex<MarketPool>>) -> Probe {
         Probe {
-            rpc_client,
-            token_pool_pair
+            pools,
+            market_accounts
         }
     }
 
-    pub async fn fetch(&self) -> Vec<Account> {
-        let target_accounts = [self.token_pool_pair.pubkey_a, self.token_pool_pair.pubkey_b];
-        let token_accounts = self.rpc_client.get_multiple_accounts(&target_accounts).await;
+    pub async fn start_watching(&self) {
+        let pools = Arc::clone(&self.pools);
+        let market_data = Arc::clone(&self.market_accounts);
 
-        match token_accounts {
-            Ok(accounts) => {
-                accounts.iter().flatten().map(|account| {
-                    account.clone()
-                }).collect::<Vec<Account>>()
+        let get_blocks = "https://go.getblock.io/bd8eab2bbe6e448b84ca2ae3b282b819".to_string();
+        let rpc_client: RpcClient = RpcClient::new(get_blocks);
+
+        spawn(async move {
+            loop {
+                println!("updating markets...");
+                let pool_accounts = pools.iter().map(|pools| {
+                    let accounts = match rpc_client.get_multiple_accounts(&*pools.1) {
+                        Ok(accounts) => {
+                            Some(accounts)
+                        }
+                        Err(err) => {
+                            eprintln!("failed to fetch market: {}", pools.0.name());
+                            None
+                        }
+                    }.unwrap_or(vec!());
+
+                    let valid_accounts = accounts.iter().filter(|account| {
+                        account.is_some()
+                    }).map(|account| {
+                        TrackedAccount {
+                            time: OffsetDateTime::now_utc(),
+                            market: Market::from(pools.0),
+                            account: account.clone().unwrap(),
+                        }
+                    }).collect::<Vec<TrackedAccount>>();
+
+                    valid_accounts
+                }).collect::<Vec<Vec<TrackedAccount>>>();
+
+                let tracked_accounts = pool_accounts.into_iter().flatten().collect::<Vec<TrackedAccount>>();
+                market_data.lock().unwrap().replace(tracked_accounts);
+
+                let _ = sleep(Duration::from_secs(10)).await;
             }
-            Err(error) => {
-                eprintln!("{}", error);
-                vec!()
-            }
-        }
+        });
     }
 }

@@ -1,6 +1,6 @@
 use arrayref::{array_ref, array_refs};
 use solana_sdk::pubkey::Pubkey;
-use crate::pools::{MarketOperation, MarketSerializer, PubkeyPair};
+use crate::pools::{Market, MarketOperation, MarketSerializer, PubkeyPair};
 
 pub struct LifinityMarket { // 895
     pub initializer_key: Pubkey, // 32
@@ -87,6 +87,10 @@ impl MarketOperation for LifinityMarket {
             pubkey_a: self.token_a_account,
             pubkey_b: self.token_b_account
         }
+    }
+
+    fn get_market_provider(&self) -> Market {
+        Market::LIFINITY
     }
 }
 

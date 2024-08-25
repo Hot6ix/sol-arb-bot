@@ -1,6 +1,6 @@
 use arrayref::{array_ref, array_refs};
 use solana_sdk::pubkey::Pubkey;
-use crate::pools::{MarketOperation, MarketSerializer, PubkeyPair};
+use crate::pools::{Market, MarketOperation, MarketSerializer, PubkeyPair};
 
 pub struct OrcaMarket {
     pub whirlpools_config: Pubkey, // 32
@@ -67,6 +67,10 @@ impl MarketOperation for OrcaMarket {
             pubkey_a: self.token_vault_a,
             pubkey_b: self.token_vault_b
         }
+    }
+
+    fn get_market_provider(&self) -> Market {
+        Market::ORCA
     }
 }
 

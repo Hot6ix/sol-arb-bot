@@ -1,6 +1,6 @@
 use arrayref::{array_ref, array_refs};
 use solana_sdk::pubkey::Pubkey;
-use crate::pools::{MarketOperation, MarketSerializer, PubkeyPair};
+use crate::pools::{Market, MarketOperation, MarketSerializer, PubkeyPair};
 
 pub struct MeteoraMarket {
     pub parameters: StaticParameters, // 32
@@ -89,6 +89,10 @@ impl MarketOperation for MeteoraMarket {
             pubkey_a: self.reserve_x,
             pubkey_b: self.reserve_y
         }
+    }
+
+    fn get_market_provider(&self) -> Market {
+        Market::METEORA
     }
 }
 
