@@ -1,5 +1,8 @@
 use std::fmt::{Display, Formatter};
+
+use solana_sdk::account::Account;
 use solana_sdk::pubkey::Pubkey;
+
 use crate::pools::{MeteoraMarket, OrcaMarket, RaydiumMarket};
 use crate::pools::lifinity::LifinityMarket;
 
@@ -14,7 +17,7 @@ impl PubkeyPair {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
 pub enum Market {
     ORCA,
     RAYDIUM,
@@ -76,4 +79,23 @@ pub fn resolve_market_data(market: &Market, data: &Vec<u8>) -> Box<dyn MarketOpe
             Box::new(LifinityMarket::unpack_data(data))
         }
     }
+}
+
+pub struct MarketPool {
+    pub market: Market,
+    pub accounts: Vec<Box<dyn MarketOperation>>
+}
+
+impl MarketPool {
+    pub fn new(market: Market) -> MarketPool {
+        MarketPool {
+            market,
+            accounts: Vec::new(),
+        }
+    }
+}
+
+pub struct MarketPoolPair {
+    pub market: Market,
+    pub account: Account
 }

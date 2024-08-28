@@ -9,13 +9,10 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use solana_client::rpc_client::RpcClient;
-use solana_sdk::account::Account;
 use solana_sdk::pubkey::Pubkey;
-use tokio::spawn;
 use tokio::time::sleep;
-use crate::pools::{Market, MarketOperation};
+use crate::pools::{Market, MarketOperation, MarketPool};
 use crate::probe::Probe;
-use crate::token::{MarketPool, TrackedAccount};
 use crate::utils::read_pools;
 
 #[tokio::main]
@@ -25,9 +22,6 @@ async fn main() {
     let alchemy = "https://solana-mainnet.g.alchemy.com/v2/76-rZCjoPGCHXLfjHNojk5CiqX8I36AT".to_string();
     let get_blocks = "https://go.getblock.io/bd8eab2bbe6e448b84ca2ae3b282b819".to_string();
     let rpc_client = RpcClient::new(get_blocks);
-
-
-    let lifinity_jup_wsol_pubkey = Pubkey::from_str("7GXdv2r3fEuzAwEBZwtNoEjgFfrZdtHyNKBTLYfFwaAM").unwrap();
 
     // read pools
     let orca_pools = read_pools("./src/pools/accounts/orca.json").unwrap();
@@ -42,7 +36,7 @@ async fn main() {
     ]));
 
     // init shared market data
-    let market_pool: Arc<Mutex<MarketPool>> = Arc::new(Mutex::new(MarketPool::new()));
+    let market_pool: Arc<Mutex<Vec<MarketPool>>> = Arc::new(Mutex::new(Vec::new()));
 
     // start monitoring
     Probe::new(Arc::clone(&pool_list), Arc::clone(&market_pool)).start_watching().await;
@@ -65,7 +59,7 @@ async fn main() {
     loop {
         println!("main thread loop");
 
-        println!("length of accounts: {}", d.lock().unwrap().accounts.len());
+        println!("length of accounts: {}", d.lock().unwrap().len());
         sleep(Duration::from_secs(1)).await;
     }
 

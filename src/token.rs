@@ -82,32 +82,3 @@ impl TrackedAccount {
         resolve_market_data(&self.market, &self.account.data)
     }
 }
-
-pub struct MarketPool {
-    pub accounts: Vec<TrackedAccount>
-}
-
-impl MarketPool {
-    pub fn new() -> MarketPool {
-        MarketPool {
-            accounts: Vec::new(),
-        }
-    }
-
-    pub fn replace(&mut self, data: Vec<TrackedAccount>) {
-        let mut accounts = &mut self.accounts;
-
-        data.into_iter().for_each(|new| {
-           // let index = accounts.iter().position(|old| {
-           //     new.account.
-           // });
-           //
-           //  if index.is_none() {
-           //      accounts.push(new);
-           //  }
-           //  else {
-           //      accounts[index] = new;
-           //  }
-        });
-    }
-}

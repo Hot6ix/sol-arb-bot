@@ -4,19 +4,17 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
-use time::OffsetDateTime;
 use tokio::spawn;
 use tokio::time::sleep;
-use crate::pools::Market;
-use crate::token::{MarketPool, TrackedAccount};
+use crate::pools::{Market, MarketOperation, MarketPool, resolve_market_data};
 
 pub struct Probe {
     pub pools: Arc<HashMap<Market, Vec<Pubkey>>>,
-    pub market_accounts: Arc<Mutex<MarketPool>>
+    pub market_accounts: Arc<Mutex<Vec<MarketPool>>>
 }
 
 impl Probe {
-    pub fn new(pools: Arc<HashMap<Market, Vec<Pubkey>>>, market_accounts: Arc<Mutex<MarketPool>>) -> Probe {
+    pub fn new(pools: Arc<HashMap<Market, Vec<Pubkey>>>, market_accounts: Arc<Mutex<Vec<MarketPool>>>) -> Probe {
         Probe {
             pools,
             market_accounts
@@ -25,7 +23,7 @@ impl Probe {
 
     pub async fn start_watching(&self) {
         let pools = Arc::clone(&self.pools);
-        let market_data = Arc::clone(&self.market_accounts);
+        let market_accounts = Arc::clone(&self.market_accounts);
 
         let get_blocks = "https://go.getblock.io/bd8eab2bbe6e448b84ca2ae3b282b819".to_string();
         let rpc_client: RpcClient = RpcClient::new(get_blocks);
@@ -33,7 +31,7 @@ impl Probe {
         spawn(async move {
             loop {
                 println!("updating markets...");
-                let pool_accounts = pools.iter().map(|pools| {
+                let _ = pools.iter().map(|pools| {
                     let accounts = match rpc_client.get_multiple_accounts(&*pools.1) {
                         Ok(accounts) => {
                             Some(accounts)
@@ -47,18 +45,16 @@ impl Probe {
                     let valid_accounts = accounts.iter().filter(|account| {
                         account.is_some()
                     }).map(|account| {
-                        TrackedAccount {
-                            time: OffsetDateTime::now_utc(),
-                            market: Market::from(pools.0),
-                            account: account.clone().unwrap(),
-                        }
-                    }).collect::<Vec<TrackedAccount>>();
+                        let data = account.clone().unwrap().data;
 
-                    valid_accounts
-                }).collect::<Vec<Vec<TrackedAccount>>>();
+                        resolve_market_data(pools.0, &data)
+                    }).collect::<Vec<Box<dyn MarketOperation>>>();
 
-                let tracked_accounts = pool_accounts.into_iter().flatten().collect::<Vec<TrackedAccount>>();
-                market_data.lock().unwrap().replace(tracked_accounts);
+                    MarketPool {
+                        market: (*pools.0).clone(),
+                        accounts: valid_accounts,
+                    }
+                }).collect::<Vec<MarketPool>>();
 
                 let _ = sleep(Duration::from_secs(10)).await;
             }
