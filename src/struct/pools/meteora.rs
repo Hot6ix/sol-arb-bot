@@ -1,8 +1,13 @@
 use arrayref::{array_ref, array_refs};
 use solana_sdk::pubkey::Pubkey;
-use crate::pools::{Market, MarketOperation, MarketSerializer, PubkeyPair};
+use crate::formula::base::Formula;
+use crate::formula::base::Formula::DynamicLiquidity;
+use crate::account::account::AccountDataSerializer;
+use crate::r#struct::market::PoolOperation;
+use crate::utils::PubkeyPair;
 
-pub struct MeteoraMarket {
+#[derive(Copy, Clone, Debug)]
+pub struct MeteoraClmmMarket {
     pub parameters: StaticParameters, // 32
     pub v_parameters: VariableParameters, // 32
     pub bump_seed: [u8; 1], // 1
@@ -35,15 +40,15 @@ pub struct MeteoraMarket {
     pub _reserved: [u8; 24], // 24
 }
 
-impl MarketSerializer for MeteoraMarket {
+impl AccountDataSerializer for MeteoraClmmMarket {
     fn unpack_data(data: &Vec<u8>) -> Self {
         let src = array_ref![data, 0, 904];
         let (discriminator, parameters, v_parameters, bump_seed, bin_step_seed, pair_type, active_id, bin_step, status, require_base_factor_seed, base_factor_seed, padding1, token_x_mint, token_y_mint, reserve_x, reserve_y, protocol_fee, fee_owner, reward_infos, oracle, bit_array_bitmap, last_updated_at, whitelisted_wallet, pre_activation_swap_address, base_key, activation_slot, pre_activation_slot_duration, padding2, lock_durations_in_slot, creator, reserved) =
             array_refs![src, 8, 32, 32, 1, 2, 1, 4, 2, 1, 1, 2, 2, 32, 32, 32, 32, 16, 32, 288, 32, 128, 8, 32, 32, 32, 8, 8, 8, 8, 32, 24];
 
-        MeteoraMarket {
-            parameters: StaticParameters::unpack_data(*parameters),
-            v_parameters: VariableParameters::unpack_data(*v_parameters),
+        MeteoraClmmMarket {
+            parameters: StaticParameters::unpack_data(&Vec::from(parameters)),
+            v_parameters: VariableParameters::unpack_data(&Vec::from(v_parameters)),
             bump_seed: *bump_seed,
             bin_step_seed: *bin_step_seed,
             pair_type: u8::from_le_bytes(*pair_type),
@@ -57,7 +62,7 @@ impl MarketSerializer for MeteoraMarket {
             token_y_mint: Pubkey::new_from_array(*token_y_mint),
             reserve_x: Pubkey::new_from_array(*reserve_x),
             reserve_y: Pubkey::new_from_array(*reserve_y),
-            protocol_fee: ProtocolFee::unpack_data(*protocol_fee),
+            protocol_fee: ProtocolFee::unpack_data(&Vec::from(protocol_fee)),
             fee_owner: Pubkey::new_from_array(*fee_owner),
             reward_infos: RewardInfo::unpack_data_set(*reward_infos),
             oracle: Pubkey::new_from_array(*oracle),
@@ -76,7 +81,7 @@ impl MarketSerializer for MeteoraMarket {
     }
 }
 
-impl MarketOperation for MeteoraMarket {
+impl PoolOperation for MeteoraClmmMarket {
     fn get_mint_pair(&self) -> PubkeyPair {
         PubkeyPair {
             pubkey_a: self.token_x_mint,
@@ -91,11 +96,16 @@ impl MarketOperation for MeteoraMarket {
         }
     }
 
-    fn get_market_provider(&self) -> Market {
-        Market::METEORA
+    fn get_swap_related_pubkeys(&self) -> Vec<(String, Pubkey)> {
+        todo!()
+    }
+
+    fn get_formula(&self) -> Formula {
+        DynamicLiquidity
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct StaticParameters {
     pub base_factor: u16, // 2
     pub filter_period: u16, // 2
@@ -109,8 +119,8 @@ pub struct StaticParameters {
     pub padding: [u8; 6] // 6
 }
 
-impl StaticParameters {
-    fn unpack_data(data: [u8; 32]) -> Self {
+impl AccountDataSerializer for StaticParameters {
+    fn unpack_data(data: &Vec<u8>) -> Self {
         let src = array_ref![data, 0, 32];
         let (base_factor, filter_period, decay_period, reduction_factor, variable_fee_control, max_volatility_accumulator, min_bin_id, max_bin_id, protocol_share, padding) =
             array_refs![src, 2, 2, 2, 2, 4, 4, 4, 4, 2, 6];
@@ -130,6 +140,7 @@ impl StaticParameters {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct VariableParameters {
     pub volatility_accumulator: u32, // 4
     pub volatility_reference: u32, // 4
@@ -139,8 +150,8 @@ pub struct VariableParameters {
     pub padding1: [u8; 8] // 8
 }
 
-impl VariableParameters {
-    fn unpack_data(data: [u8; 32]) -> Self {
+impl AccountDataSerializer for VariableParameters {
+    fn unpack_data(data: &Vec<u8>) -> Self {
         let src = array_ref![data, 0, 32];
         let (volatility_accumulator, volatility_reference, index_reference, padding, last_update_timestamp, padding1) =
             array_refs![src, 4, 4, 4, 4, 8, 8];
@@ -156,13 +167,14 @@ impl VariableParameters {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct ProtocolFee {
     pub amount_x: u64, // 8
     pub amount_y: u64 // 8
 }
 
-impl ProtocolFee {
-    pub fn unpack_data(data: [u8; 16]) -> ProtocolFee {
+impl AccountDataSerializer for ProtocolFee {
+    fn unpack_data(data: &Vec<u8>) -> Self {
         let src = array_ref![data, 0, 16];
         let (amount_x, amount_y) =
             array_refs![src, 8, 8];
@@ -174,6 +186,7 @@ impl ProtocolFee {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct RewardInfo {
     pub mint: Pubkey, // 32
     pub vault: Pubkey, // 32
@@ -185,8 +198,8 @@ pub struct RewardInfo {
     pub cumulative_seconds_with_empty_liquidity_reward: u64 // 8
 }
 
-impl RewardInfo {
-    pub fn unpack_data(data: &Vec<u8>) -> RewardInfo {
+impl AccountDataSerializer for RewardInfo {
+    fn unpack_data(data: &Vec<u8>) -> Self {
         let src = array_ref![data, 0, 144];
         let (mint, vault, funder, reward_duration, reward_duration_end, reward_rate, last_update_time, cumulative_seconds_with_empty_liquidity_reward) =
             array_refs![src, 32, 32, 32, 8, 8, 16, 8, 8];
@@ -202,16 +215,16 @@ impl RewardInfo {
             cumulative_seconds_with_empty_liquidity_reward: u64::from_le_bytes(*cumulative_seconds_with_empty_liquidity_reward),
         }
     }
+}
+
+impl RewardInfo {
     pub fn unpack_data_set(data: [u8; 288]) -> [RewardInfo; 2] {
         let src = array_ref![data, 0, 288];
-        let (first, second) = data.split_at_checked(data.len() / 2).unwrap();
+        let (first, second) = data.split_at_checked(src.len() / 2).unwrap();
 
         [
             Self::unpack_data(&Vec::from(first)),
             Self::unpack_data(&Vec::from(second))
         ]
     }
-}
-
-pub fn parse_bin_array_bitmap(data: [u8; 128]) {
 }

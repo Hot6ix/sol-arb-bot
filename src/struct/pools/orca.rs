@@ -1,8 +1,13 @@
 use arrayref::{array_ref, array_refs};
 use solana_sdk::pubkey::Pubkey;
-use crate::pools::{Market, MarketOperation, MarketSerializer, PubkeyPair};
+use crate::account::account::AccountDataSerializer;
+use crate::r#struct::market::PoolOperation;
+use crate::formula::base::Formula;
+use crate::formula::base::Formula::ConcentratedLiquidity;
+use crate::utils::PubkeyPair;
 
-pub struct OrcaMarket {
+#[derive(Copy, Clone, Debug)]
+pub struct OrcaClmmMarket {
     pub whirlpools_config: Pubkey, // 32
     pub whirlpool_bump: [u8; 1], // 1
     pub tick_spacing: u16, // 2
@@ -24,13 +29,13 @@ pub struct OrcaMarket {
     pub reward_infos: [WhirlpoolRewardInfo; 3] // 128 * 3; 384
 }
 
-impl MarketSerializer for OrcaMarket {
+impl AccountDataSerializer for OrcaClmmMarket {
     fn unpack_data(data: &Vec<u8>) -> Self {
         let src = array_ref![data, 0, 653]; // 653
         let (discriminator, whirlpools_config, whirlpool_bump, tick_spacing, tick_spacing_seed, fee_rate, protocol_fee_rate, liquidity, sqrt_price, tick_current_index, protocol_fee_owed_a, protocol_fee_owed_b, token_mint_a, token_vault_a, fee_growth_global_a, token_mint_b, token_vault_b, fee_growth_global_b, reward_last_updated_timestamp, reward_infos) =
             array_refs![src, 8, 32, 1, 2, 2, 2, 2, 16, 16, 4, 8, 8, 32, 32, 16, 32, 32, 16, 8, 384];
 
-        OrcaMarket {
+        OrcaClmmMarket {
             whirlpools_config: Pubkey::new_from_array(*whirlpools_config),
             whirlpool_bump: *whirlpool_bump,
             tick_spacing: u16::from_le_bytes(*tick_spacing),
@@ -54,7 +59,7 @@ impl MarketSerializer for OrcaMarket {
     }
 }
 
-impl MarketOperation for OrcaMarket {
+impl PoolOperation for OrcaClmmMarket {
     fn get_mint_pair(&self) -> PubkeyPair {
         PubkeyPair {
             pubkey_a: self.token_mint_a,
@@ -69,11 +74,16 @@ impl MarketOperation for OrcaMarket {
         }
     }
 
-    fn get_market_provider(&self) -> Market {
-        Market::ORCA
+    fn get_swap_related_pubkeys(&self) -> Vec<(String, Pubkey)> {
+        todo!()
+    }
+
+    fn get_formula(&self) -> Formula {
+        ConcentratedLiquidity
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct WhirlpoolRewardInfo {
     pub mint: Pubkey, // 32
     pub vault: Pubkey, // 32
@@ -82,8 +92,8 @@ pub struct WhirlpoolRewardInfo {
     pub growth_global_x64: u128 // 16
 }
 
-impl WhirlpoolRewardInfo {
-    pub fn unpack_data(data: &Vec<u8>) -> WhirlpoolRewardInfo {
+impl AccountDataSerializer for WhirlpoolRewardInfo {
+    fn unpack_data(data: &Vec<u8>) -> Self {
         let src = array_ref![data, 0, 128];
         let (mint, vault, authority, emissions_per_second_x64, growth_global_x64) =
             array_refs![src, 32, 32, 32, 16, 16];
@@ -96,7 +106,9 @@ impl WhirlpoolRewardInfo {
             growth_global_x64: u128::from_le_bytes(*growth_global_x64),
         }
     }
+}
 
+impl WhirlpoolRewardInfo {
     pub fn unpack_data_set(data: [u8; 384]) -> [WhirlpoolRewardInfo; 3] {
         let index = data.len() / 3;
         let (first, rest) = data.split_at_checked(index).unwrap();
@@ -108,4 +120,16 @@ impl WhirlpoolRewardInfo {
             Self::unpack_data(&Vec::from(third))
         ]
     }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct WhirlpoolsConfig {
+    pub fee_authority: Pubkey, // 32
+    pub collect_protocol_fees_authority: Pubkey, // 32
+    pub reward_emissions_super_authority: Pubkey, // 32
+    pub default_protocol_fee_rate: u16, // 2
+}
+
+pub enum OrcaClmmAccount {
+    WhirlpoolsConfig(WhirlpoolsConfig)
 }

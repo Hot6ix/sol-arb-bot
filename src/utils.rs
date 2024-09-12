@@ -6,6 +6,18 @@ use std::str::FromStr;
 use serde::Deserialize;
 use solana_sdk::pubkey::Pubkey;
 
+#[derive(Copy, Clone, Debug)]
+pub struct PubkeyPair {
+    pub pubkey_a: Pubkey,
+    pub pubkey_b: Pubkey
+}
+
+impl PubkeyPair {
+    pub fn any(&self, pubkey: Pubkey) -> bool {
+        self.pubkey_a == pubkey || self.pubkey_b == pubkey
+    }
+}
+
 pub fn read_pools<P: AsRef<Path>>(path: P) -> Result<Vec<Pubkey>, Box<dyn Error>> {
     let file = File::open(path).unwrap();
     let buffer_reader = BufReader::new(file);

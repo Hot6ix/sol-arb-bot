@@ -1,7 +1,12 @@
 use arrayref::{array_ref, array_refs};
 use solana_sdk::pubkey::Pubkey;
-use crate::pools::{Market, MarketOperation, MarketSerializer, PubkeyPair};
+use crate::formula::base::Formula;
+use crate::formula::base::Formula::ConcentratedLiquidity;
+use crate::account::account::AccountDataSerializer;
+use crate::r#struct::market::PoolOperation;
+use crate::utils::PubkeyPair;
 
+#[derive(Copy, Clone, Debug)]
 pub struct LifinityMarket { // 895
     pub initializer_key: Pubkey, // 32
     pub initializer_deposit_token_account: Pubkey, // 32
@@ -34,7 +39,7 @@ pub struct LifinityMarket { // 895
     pub amm_p_temp5: Pubkey, // 32
 }
 
-impl MarketSerializer for LifinityMarket {
+impl AccountDataSerializer for LifinityMarket {
     fn unpack_data(data: &Vec<u8>) -> Self {
         let src = array_ref![data, 0, 903];
         let (discriminator, initializer_key, initializer_deposit_token_account, initializer_receiver_token_account, initializer_amount, taker_amount, is_initialized, bump_seed, freeze_trade, freeze_deposit, freeze_withdraw, base_decimals, token_program_id, token_a_account, token_b_account, pool_mint, token_a_mint, token_b_mint, fee_account, oracle_main_account, oracle_sub_account, oracle_pc_account, fees, curve, config, amm_p_temp1, amm_p_temp2, amm_p_temp3, amm_p_temp4, amm_p_temp5) =
@@ -62,7 +67,7 @@ impl MarketSerializer for LifinityMarket {
             oracle_main_account: Pubkey::new_from_array(*oracle_main_account),
             oracle_sub_account: Pubkey::new_from_array(*oracle_sub_account),
             oracle_pc_account: Pubkey::new_from_array(*oracle_pc_account),
-            fees: AmmFees::unpack_data(*fees),
+            fees: AmmFees::unpack_data(&Vec::from(fees)),
             curve: AmmCurve::unpack_data(*curve),
             config: AmmConfig::unpack_data(*config),
             amm_p_temp1: Pubkey::new_from_array(*amm_p_temp1),
@@ -74,7 +79,7 @@ impl MarketSerializer for LifinityMarket {
     }
 }
 
-impl MarketOperation for LifinityMarket {
+impl PoolOperation for LifinityMarket {
     fn get_mint_pair(&self) -> PubkeyPair {
         PubkeyPair {
             pubkey_a: self.token_a_mint,
@@ -89,11 +94,16 @@ impl MarketOperation for LifinityMarket {
         }
     }
 
-    fn get_market_provider(&self) -> Market {
-        Market::LIFINITY
+    fn get_swap_related_pubkeys(&self) -> Vec<(String, Pubkey)> {
+        todo!()
+    }
+
+    fn get_formula(&self) -> Formula {
+        ConcentratedLiquidity
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct AmmFees { // 64
     pub trade_fee_numerator: u64, // 8
     pub trade_fee_denominator: u64, // 8
@@ -105,8 +115,8 @@ pub struct AmmFees { // 64
     pub host_fee_denominator: u64, // 8
 }
 
-impl AmmFees {
-    pub fn unpack_data(data: [u8; 64]) -> AmmFees {
+impl AccountDataSerializer for AmmFees {
+    fn unpack_data(data: &Vec<u8>) -> Self {
         let src = array_ref![data, 0, 64];
         let (trade_fee_numerator, trade_fee_denominator, owner_trade_fee_numerator, owner_trade_fee_denominator, owner_withdraw_fee_numerator, owner_withdraw_fee_denominator, host_fee_numerator, host_fee_denominator) =
             array_refs![src, 8, 8, 8, 8, 8, 8, 8, 8];
@@ -124,6 +134,7 @@ impl AmmFees {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct AmmCurve { // 9
     pub curve_type: u8, // 1
     pub curve_parameters: u64 // 8
@@ -142,6 +153,7 @@ impl AmmCurve {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct AmmConfig { // 224
     pub last_price: u64, // 8
     pub last_balance_price: u64, // 8
