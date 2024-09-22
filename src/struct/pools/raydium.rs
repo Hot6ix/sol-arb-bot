@@ -1,12 +1,22 @@
+use std::any::Any;
+use std::io::Error;
+
 use arrayref::{array_ref, array_refs};
+use num_enum::TryFromPrimitive;
+use serde::Deserialize;
+use solana_sdk::account::Account;
 use solana_sdk::pubkey::Pubkey;
+
+use crate::account::account::{AccountDataSerializer, DeserializedAccount, DeserializedConfigAccount, DeserializedPoolAccount, DeserializedTokenAccount};
+use crate::account::account::DeserializedConfigAccount::RaydiumClmmConfigAccount;
 use crate::formula::base::Formula;
 use crate::formula::base::Formula::{ConcentratedLiquidity, ConstantProduct};
-use crate::account::account::{AccountDataSerializer};
-use crate::r#struct::market::{ConfigAccount, PoolOperation};
+use crate::formula::constant_product::{ConstantProductBase, DefaultConstantProduct};
+use crate::r#struct::market::{Market, PoolOperation};
 use crate::utils::PubkeyPair;
+use crate::constants::{RAYDIUM_CLMM_AMM_CONFIG, RAYDIUM_CLMM_OBSERVATION_KEY};
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct RaydiumClmmMarket {
     pub bump: [u8; 1], // 1
     pub amm_config: Pubkey, // 32
@@ -112,21 +122,79 @@ impl PoolOperation for RaydiumClmmMarket {
         }
     }
 
-    fn get_swap_related_pubkeys(&self) -> Vec<(String, Pubkey)> {
+    fn get_swap_related_pubkeys(&self) -> Vec<(DeserializedAccount, Pubkey)> {
         vec![
-            (stringify!(self.amm_config).to_string(), self.amm_config),
-            (stringify!(self.token_vault_0).to_string(), self.token_vault_0),
-            (stringify!(self.token_vault_1).to_string(), self.token_vault_1),
-            (stringify!(self.observation_key).to_string(), self.observation_key)
+            (DeserializedAccount::ConfigAccount(DeserializedConfigAccount::default()), self.amm_config),
+            // (DeserializedAccount::TokenAccount(DeserializedTokenAccount::default()), self.token_vault_0),
+            // (DeserializedAccount::TokenAccount(DeserializedTokenAccount::default()), self.token_vault_1),
+            // (DeserializedAccount::ConfigAccount(DeserializedConfigAccount::default()), self.observation_key),
         ]
     }
 
     fn get_formula(&self) -> Formula {
         ConcentratedLiquidity
     }
+
+    fn swap(&self, accounts: &Vec<DeserializedAccount>) {
+        let mut amm_config = AmmConfig::default();
+        accounts.iter().for_each(|account| {
+            match account {
+                DeserializedAccount::Account(_) => {}
+                DeserializedAccount::PoolAccount(pool) => {
+                    if let Some(market) = pool.operation.as_any().downcast_ref::<RaydiumClmmMarket>() {
+
+                    }
+                }
+                DeserializedAccount::TokenAccount(token) => {
+                }
+                DeserializedAccount::ConfigAccount(config) => {
+                    match config {
+                        RaydiumClmmConfigAccount(raydium_config) => {
+                            match raydium_config {
+                                RaydiumClmmAccount::AmmConfig(amm) => {
+                                    amm_config = amm.config
+                                }
+                                RaydiumClmmAccount::ObservationKey => {}
+                                _ => {}
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        });
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
-#[derive(Copy, Clone, Debug)]
+impl RaydiumClmmMarket {
+    pub fn resolve(pubkey: Pubkey, account: Account) -> RaydiumClmmAccount {
+        RaydiumClmmAccount::AmmConfig(
+            AmmConfigAccount {
+                pubkey,
+                config: account.deserialize_data::<AmmConfig>().unwrap(),
+                market: Market::RAYDIUM
+            }
+        )
+    }
+
+    pub fn get_first_initialized_tick_array(
+        &self,
+        // tickarray_bitmap_extension: &Option<TickArrayBitmapExtension>,
+        zero_for_one: bool,
+    ) -> Result<(bool, i32), Error> {
+        Ok((true, -1i32))
+    }
+
+    pub fn is_overflow_default_tick_array_bitmap(&self, tick_index_array: Vec<i32>) {
+
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default)]
 pub struct RewardInfo { // 169
     pub reward_state: u8, // 1
     pub open_time: u64, // 8
@@ -177,7 +245,7 @@ impl RewardInfo {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Default)]
 pub struct AmmConfig { // 117
     pub bump: u8,
     pub index: u16,
@@ -212,12 +280,57 @@ impl AccountDataSerializer for AmmConfig {
     }
 }
 
-pub enum RaydiumClmmAccount {
-    AmmConfig(AmmConfig)
+#[derive(Clone, Deserialize, PartialEq)]
+pub struct AmmConfigAccount {
+    pub pubkey: Pubkey,
+    pub config: AmmConfig,
+    pub market: Market,
 }
 
+#[derive(Clone, Deserialize, PartialEq)]
+pub enum RaydiumClmmAccount {
+    AmmConfig(AmmConfigAccount),
+    ObservationKey
+}
+
+impl RaydiumClmmAccount {
+    pub fn get_pubkey(&self) -> Pubkey {
+        match self {
+            RaydiumClmmAccount::AmmConfig(account) => {
+                account.pubkey
+            }
+            _ => {
+                Pubkey::default()
+            }
+        }
+    }
+
+    pub fn get_market(&self) -> Market {
+        Market::RAYDIUM
+    }
+
+    pub fn resolve_account(pubkey: Pubkey, data: &Vec<u8>) -> RaydiumClmmAccount {
+        match data.len() {
+            RAYDIUM_CLMM_AMM_CONFIG => {
+                RaydiumClmmAccount::AmmConfig(AmmConfigAccount {
+                    pubkey,
+                    config: AmmConfig::unpack_data(data),
+                    market: Market::RAYDIUM
+                })
+            }
+            RAYDIUM_CLMM_OBSERVATION_KEY => {
+                RaydiumClmmAccount::ObservationKey
+            }
+            _ => {
+                panic!("unknown account: RaydiumClmmAccount")
+            }
+        }
+    }
+}
+
+
 /////////////////////////////////////////////////////////////////////////////////////////////////
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct RaydiumCpmmMarket {
     pub status: u64,
     pub nonce: u64,
@@ -352,14 +465,60 @@ impl PoolOperation for RaydiumCpmmMarket {
         }
     }
 
-    fn get_swap_related_pubkeys(&self) -> Vec<(String, Pubkey)> {
+    fn get_swap_related_pubkeys(&self) -> Vec<(DeserializedAccount, Pubkey)> {
         vec![
-            (stringify!(self.base_vault).to_string(), self.base_vault),
-            (stringify!(self.quote_vault).to_string(), self.quote_vault),
+            (DeserializedAccount::TokenAccount(DeserializedTokenAccount::default()), self.base_vault),
+            (DeserializedAccount::TokenAccount(DeserializedTokenAccount::default()), self.quote_vault),
         ]
     }
 
     fn get_formula(&self) -> Formula {
         ConstantProduct
     }
+
+    fn swap(&self, accounts: &Vec<DeserializedAccount>) {
+        if !accounts.is_empty() {
+            let mut raydium_pool= &DeserializedPoolAccount::default();
+            let mut base_vault= &DeserializedTokenAccount::default();
+            let mut quote_vault= &DeserializedTokenAccount::default();
+
+            accounts.iter().for_each(|account| {
+                match account {
+                    DeserializedAccount::Account(_) => {}
+                    DeserializedAccount::PoolAccount(pool) => {
+                        raydium_pool = &pool
+                    }
+                    DeserializedAccount::TokenAccount(token) => {
+                        if token.pubkey == self.base_vault {
+                            base_vault = &token
+                        }
+                        else if token.pubkey == self.quote_vault {
+                            quote_vault = &token
+                        }
+                    }
+                    DeserializedAccount::ConfigAccount(_) => {}
+                }
+            });
+
+            let cpmm = DefaultConstantProduct {
+                token_a_amount: base_vault.get_amount(),
+                token_b_amount: quote_vault.get_amount(),
+                decimal_diff: (self.base_decimal - self.quote_decimal) as i32,
+                swap_fee_numerator: self.swap_fee_numerator,
+                swap_fee_denominator: self.swap_fee_denominator
+            };
+
+            let res = cpmm.swap(1000000000u64, true);
+            println!("{}", res);
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Clone, Deserialize)]
+pub enum RaydiumCpmmAccount {
+    Unknown
 }

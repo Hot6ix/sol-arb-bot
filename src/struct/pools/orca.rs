@@ -1,12 +1,13 @@
+use std::any::Any;
 use arrayref::{array_ref, array_refs};
 use solana_sdk::pubkey::Pubkey;
-use crate::account::account::AccountDataSerializer;
-use crate::r#struct::market::PoolOperation;
+use crate::account::account::{AccountDataSerializer, DeserializedAccount, DeserializedConfigAccount, DeserializedDataAccount, DeserializedTokenAccount};
+use crate::r#struct::market::{Market, PoolOperation};
 use crate::formula::base::Formula;
 use crate::formula::base::Formula::ConcentratedLiquidity;
 use crate::utils::PubkeyPair;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct OrcaClmmMarket {
     pub whirlpools_config: Pubkey, // 32
     pub whirlpool_bump: [u8; 1], // 1
@@ -74,16 +75,28 @@ impl PoolOperation for OrcaClmmMarket {
         }
     }
 
-    fn get_swap_related_pubkeys(&self) -> Vec<(String, Pubkey)> {
-        todo!()
+    fn get_swap_related_pubkeys(&self) -> Vec<(DeserializedAccount, Pubkey)> {
+        vec![
+            (DeserializedAccount::TokenAccount(DeserializedTokenAccount::default()), self.token_vault_a),
+            (DeserializedAccount::TokenAccount(DeserializedTokenAccount::default()), self.token_vault_b),
+            (DeserializedAccount::ConfigAccount(DeserializedConfigAccount::default()), self.whirlpools_config),
+        ]
     }
 
     fn get_formula(&self) -> Formula {
         ConcentratedLiquidity
     }
+
+    fn swap(&self, accounts: &Vec<DeserializedAccount>) {
+        todo!()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct WhirlpoolRewardInfo {
     pub mint: Pubkey, // 32
     pub vault: Pubkey, // 32
@@ -122,7 +135,14 @@ impl WhirlpoolRewardInfo {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct WhirlpoolsConfigAccount {
+    pub pubkey: Pubkey,
+    pub config: WhirlpoolsConfig,
+    pub market: Market,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct WhirlpoolsConfig {
     pub fee_authority: Pubkey, // 32
     pub collect_protocol_fees_authority: Pubkey, // 32
@@ -130,6 +150,40 @@ pub struct WhirlpoolsConfig {
     pub default_protocol_fee_rate: u16, // 2
 }
 
+impl AccountDataSerializer for WhirlpoolsConfig {
+    fn unpack_data(data: &Vec<u8>) -> Self {
+        let src = array_ref![data, 0, 98];
+        let (fee_authority, collect_protocol_fees_authority, reward_emissions_super_authority, default_protocol_fee_rate) =
+            array_refs![src, 32, 32, 32, 2];
+
+        WhirlpoolsConfig {
+            fee_authority: Pubkey::new_from_array(*fee_authority),
+            collect_protocol_fees_authority: Pubkey::new_from_array(*collect_protocol_fees_authority),
+            reward_emissions_super_authority: Pubkey::new_from_array(*reward_emissions_super_authority),
+            default_protocol_fee_rate: u16::from_le_bytes(*default_protocol_fee_rate),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq)]
 pub enum OrcaClmmAccount {
-    WhirlpoolsConfig(WhirlpoolsConfig)
+    WhirlpoolsConfig(WhirlpoolsConfigAccount)
+}
+
+impl OrcaClmmAccount {
+    pub fn get_pubkey(&self) -> Pubkey {
+        match self {
+            OrcaClmmAccount::WhirlpoolsConfig(account) => {
+                account.pubkey
+            }
+        }
+    }
+
+    pub fn get_market(&self) -> Market {
+        match self {
+            OrcaClmmAccount::WhirlpoolsConfig(account) => {
+                account.market
+            }
+        }
+    }
 }

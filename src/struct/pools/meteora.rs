@@ -1,12 +1,13 @@
+use std::any::Any;
 use arrayref::{array_ref, array_refs};
 use solana_sdk::pubkey::Pubkey;
 use crate::formula::base::Formula;
 use crate::formula::base::Formula::DynamicLiquidity;
-use crate::account::account::AccountDataSerializer;
-use crate::r#struct::market::PoolOperation;
+use crate::account::account::{AccountDataSerializer, DeserializedAccount, DeserializedDataAccount, DeserializedTokenAccount};
+use crate::r#struct::market::{PoolOperation};
 use crate::utils::PubkeyPair;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct MeteoraClmmMarket {
     pub parameters: StaticParameters, // 32
     pub v_parameters: VariableParameters, // 32
@@ -96,16 +97,27 @@ impl PoolOperation for MeteoraClmmMarket {
         }
     }
 
-    fn get_swap_related_pubkeys(&self) -> Vec<(String, Pubkey)> {
-        todo!()
+    fn get_swap_related_pubkeys(&self) -> Vec<(DeserializedAccount, Pubkey)> {
+        vec![
+            (DeserializedAccount::TokenAccount(DeserializedTokenAccount::default()), self.reserve_x),
+            (DeserializedAccount::TokenAccount(DeserializedTokenAccount::default()), self.reserve_y),
+        ]
     }
 
     fn get_formula(&self) -> Formula {
         DynamicLiquidity
     }
+
+    fn swap(&self, accounts: &Vec<DeserializedAccount>) {
+        todo!()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct StaticParameters {
     pub base_factor: u16, // 2
     pub filter_period: u16, // 2
@@ -140,7 +152,7 @@ impl AccountDataSerializer for StaticParameters {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct VariableParameters {
     pub volatility_accumulator: u32, // 4
     pub volatility_reference: u32, // 4
@@ -167,7 +179,7 @@ impl AccountDataSerializer for VariableParameters {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct ProtocolFee {
     pub amount_x: u64, // 8
     pub amount_y: u64 // 8
@@ -186,7 +198,7 @@ impl AccountDataSerializer for ProtocolFee {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct RewardInfo {
     pub mint: Pubkey, // 32
     pub vault: Pubkey, // 32

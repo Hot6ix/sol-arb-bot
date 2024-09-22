@@ -1,28 +1,73 @@
-use std::sync::Arc;
-use crate::account::account::AccountDataSerializer;
+use std::any::Any;
+use solana_sdk::pubkey::Pubkey;
+
+use crate::account::account::{AccountDataSerializer, DeserializedConfigAccount};
 use crate::constants::RAYDIUM_CLMM_DATA_LEN;
+use crate::constants::RAYDIUM_CLMM_PROGRAM_PUBKEY;
+use crate::constants::RAYDIUM_CPMM_V4_PROGRAM_PUBKEY;
 use crate::r#struct::market::{Market, PoolOperation};
-use crate::r#struct::pools::{MeteoraClmmMarket, OrcaClmmMarket, RaydiumClmmMarket, RaydiumCpmmMarket};
+use crate::r#struct::pools::{MeteoraClmmMarket, OrcaClmmAccount, OrcaClmmMarket, RaydiumClmmAccount, RaydiumClmmMarket, RaydiumCpmmMarket, WhirlpoolsConfig, WhirlpoolsConfigAccount};
 use crate::r#struct::pools::lifinity::LifinityMarket;
 
-pub fn resolve_market_data(market: &Market, data: &Vec<u8>) -> Arc<dyn PoolOperation> {
+pub fn resolve_pool_account(market: &Market, data: &Vec<u8>) -> Box<dyn PoolOperation> {
     match market {
         Market::ORCA => {
-            Arc::new(OrcaClmmMarket::unpack_data(data))
+            Box::new(OrcaClmmMarket::unpack_data(data))
         }
         Market::RAYDIUM => {
             if data.len() == RAYDIUM_CLMM_DATA_LEN {
-                Arc::new(RaydiumClmmMarket::unpack_data(data))
+                Box::new(RaydiumClmmMarket::unpack_data(data))
             }
             else {
-                Arc::new(RaydiumCpmmMarket::unpack_data(data))
+                Box::new(RaydiumCpmmMarket::unpack_data(data))
             }
         }
         Market::METEORA => {
-            Arc::new(MeteoraClmmMarket::unpack_data(data))
+            Box::new(MeteoraClmmMarket::unpack_data(data))
         }
         Market::LIFINITY => {
-            Arc::new(LifinityMarket::unpack_data(data))
+            Box::new(LifinityMarket::unpack_data(data))
+        }
+        _ => {
+            panic!("unknown pool")
+        }
+    }
+}
+
+pub fn resolve_pool_config_account(market: &Market, owner_pubkey: &Pubkey, account_pubkey: Pubkey, data: &Vec<u8>) -> DeserializedConfigAccount {
+    match market {
+        Market::ORCA => {
+            DeserializedConfigAccount::OrcaClmmConfigAccount(
+                OrcaClmmAccount::WhirlpoolsConfig(WhirlpoolsConfigAccount {
+                    pubkey: account_pubkey,
+                    config: WhirlpoolsConfig::unpack_data(data),
+                    market: Market::ORCA,
+                })
+            )
+        }
+        Market::RAYDIUM => {
+            match owner_pubkey.to_string().as_str() {
+                RAYDIUM_CLMM_PROGRAM_PUBKEY => {
+                    DeserializedConfigAccount::RaydiumClmmConfigAccount(
+                        RaydiumClmmAccount::resolve_account(account_pubkey, data)
+                    )
+                }
+                RAYDIUM_CPMM_V4_PROGRAM_PUBKEY => {
+                    panic!("unknown account: RaydiumCpmmAccount")
+                }
+                _ => {
+                    DeserializedConfigAccount::EmptyConfigAccount
+                }
+            }
+        }
+        Market::METEORA => {
+            todo!()
+        }
+        Market::LIFINITY => {
+            todo!()
+        }
+        _ => {
+            todo!()
         }
     }
 }

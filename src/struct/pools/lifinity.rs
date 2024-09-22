@@ -1,12 +1,14 @@
+use std::any::Any;
 use arrayref::{array_ref, array_refs};
 use solana_sdk::pubkey::Pubkey;
+
+use crate::account::account::{AccountDataSerializer, DeserializedAccount, DeserializedTokenAccount};
 use crate::formula::base::Formula;
 use crate::formula::base::Formula::ConcentratedLiquidity;
-use crate::account::account::AccountDataSerializer;
 use crate::r#struct::market::PoolOperation;
 use crate::utils::PubkeyPair;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct LifinityMarket { // 895
     pub initializer_key: Pubkey, // 32
     pub initializer_deposit_token_account: Pubkey, // 32
@@ -94,16 +96,27 @@ impl PoolOperation for LifinityMarket {
         }
     }
 
-    fn get_swap_related_pubkeys(&self) -> Vec<(String, Pubkey)> {
-        todo!()
+    fn get_swap_related_pubkeys(&self) -> Vec<(DeserializedAccount, Pubkey)> {
+        vec![
+            (DeserializedAccount::TokenAccount(DeserializedTokenAccount::default()), self.token_a_account),
+            (DeserializedAccount::TokenAccount(DeserializedTokenAccount::default()), self.token_b_account),
+        ]
     }
 
     fn get_formula(&self) -> Formula {
         ConcentratedLiquidity
     }
+
+    fn swap(&self, accounts: &Vec<DeserializedAccount>) {
+        todo!()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct AmmFees { // 64
     pub trade_fee_numerator: u64, // 8
     pub trade_fee_denominator: u64, // 8
@@ -134,7 +147,7 @@ impl AccountDataSerializer for AmmFees {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct AmmCurve { // 9
     pub curve_type: u8, // 1
     pub curve_parameters: u64 // 8
@@ -153,7 +166,7 @@ impl AmmCurve {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct AmmConfig { // 224
     pub last_price: u64, // 8
     pub last_balance_price: u64, // 8

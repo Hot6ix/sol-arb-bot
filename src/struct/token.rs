@@ -6,13 +6,15 @@ use solana_sdk::pubkey::Pubkey;
 use crate::account::account::AccountDataSerializer;
 
 #[repr(u8)]
-#[derive(Eq, PartialEq, TryFromPrimitive)]
+#[derive(Clone, Default, Eq, PartialEq, TryFromPrimitive)]
 pub enum AccountState {
+    #[default]
     Uninitialized = 0,
     Initialized = 1,
     Frozen = 2,
 }
 
+#[derive(Clone, Default)]
 pub struct TokenAccount {
     pub mint: Pubkey,
     pub owner: Pubkey,
