@@ -117,10 +117,10 @@ async fn main() {
             //     // });
             // });
 
-            // single swap
+            // single swap test
             let related_pubkeys = target.1.iter().find(|pool| {
                pool.market == RAYDIUM && pool.operation.get_formula() == Formula::ConstantProduct
-            }).unwrap().get_swap_related_pubkeys();
+            }).unwrap().get_swap_related_pubkeys(Some(&rpc_client)).unwrap();
 
             let related_accounts = shared_pool_account_bin.lock().unwrap().clone().into_iter().filter(|account| {
                 related_pubkeys.iter().find(|(_, pubkey)| {

@@ -67,7 +67,7 @@ impl AccountDataSerializer for MeteoraClmmMarket {
             fee_owner: Pubkey::new_from_array(*fee_owner),
             reward_infos: RewardInfo::unpack_data_set(*reward_infos),
             oracle: Pubkey::new_from_array(*oracle),
-            bin_array_bitmap: [0u64; 16], // temp
+            bin_array_bitmap: [0u64; 16], // todo
             last_updated_at: 0,
             whitelisted_wallet: Pubkey::new_from_array(*whitelisted_wallet),
             pre_activation_swap_address: Pubkey::new_from_array(*pre_activation_swap_address),

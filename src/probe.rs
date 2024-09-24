@@ -38,7 +38,7 @@ impl Probe {
 
         println!("fetching market pools...");
         let fetched_markets = pools.lock().unwrap().iter().map(|pools| {
-            let accounts = Self::fetch_accounts(&rpc_client, pools.1);
+            let accounts = Self::_fetch_accounts(&rpc_client, pools.1);
 
             let valid_accounts = accounts.iter().enumerate().filter(|(index, account)| {
                 account.is_some()
@@ -67,7 +67,8 @@ impl Probe {
         items: Vec<(Market, DeserializedAccount, Pubkey)>,
         bin: Arc<Mutex<Vec<DeserializedAccount>>>
     ) {
-        Self::_fetch_multiple_accounts(self.rpc_url.clone(), items, bin, None)
+        let rpc_client = RpcClient::new(self.rpc_url.clone());
+        Self::_fetch_multiple_accounts(&rpc_client, items, bin, None)
     }
 
     // fetch accounts periodically
@@ -77,10 +78,11 @@ impl Probe {
         bin: Arc<Mutex<Vec<DeserializedAccount>>>
     ) {
         let get_blocks = self.rpc_url.clone();
+        let rpc_client = RpcClient::new(get_blocks);
         let publisher = Arc::clone(&self.publisher);
 
         let items = Arc::clone(&pool_account_bin).lock().unwrap().iter().map(|account| {
-            account.get_swap_related_pubkeys().into_iter().map(|item| {
+            account.get_swap_related_pubkeys(Some(&rpc_client)).unwrap().into_iter().map(|item| {
                 (account.market, item.0, item.1)
             }).collect::<Vec<(Market, DeserializedAccount, Pubkey)>>()
         }).into_iter().flatten().collect::<Vec<(Market, DeserializedAccount, Pubkey)>>();
@@ -88,7 +90,7 @@ impl Probe {
         spawn(async move {
             loop {
                 Self::_fetch_multiple_accounts(
-                    get_blocks.clone(),
+                    &rpc_client,
                     items.clone(),
                     Arc::clone(&bin),
                     Some(Arc::clone(&publisher))
@@ -100,17 +102,15 @@ impl Probe {
     }
 
     fn _fetch_multiple_accounts(
-        rpc_url: String,
+        rpc_client: &RpcClient,
         items: Vec<(Market, DeserializedAccount, Pubkey)>,
         bin: Arc<Mutex<Vec<DeserializedAccount>>>,
         publisher: Option<Arc<Mutex<Publisher>>>
     ) {
-        let rpc_client: RpcClient = RpcClient::new(&rpc_url);
-
         println!("fetching accounts...");
         let time = Instant::now();
         let pubkeys = items.iter().map(|item| { item.2 }).collect::<Vec<Pubkey>>();
-        let accounts = Self::fetch_accounts(&rpc_client, &pubkeys);
+        let accounts = Self::_fetch_accounts(&rpc_client, &pubkeys);
 
         let fetched_accounts = accounts.iter().enumerate().filter(|(index, account)| {
             account.is_some()
@@ -119,7 +119,11 @@ impl Probe {
 
             match items[index].1 {
                 DeserializedAccount::Account(_) => {
-                    DeserializedAccount::Account(DeserializedDataAccount::default())
+                    DeserializedAccount::Account(DeserializedDataAccount {
+                        pubkey: items[index].2,
+                        account,
+                        market: items[index].0,
+                    })
                 }
                 DeserializedAccount::PoolAccount(_) => {
                     let market_operation = resolve_pool_account(&items[index].0, &account.data);
@@ -146,15 +150,6 @@ impl Probe {
                     )
                 }
             }
-            // token account
-            // if account.owner.to_string() == TOKEN_PROGRAM_PUBKEY && account.data.len() == TOKEN_ACCOUNT_DATA_LEN {
-            //     return DeserializedAccount::TokenAccount(DeserializedTokenAccount {
-            //         pubkey: pubkeys[index],
-            //         account,
-            //     })
-            // }
-
-            // DeserializedAccount::ConfigAccount(resolve_pool_config_account(&items[index].0, &account.owner, pubkeys[index], &account.data))
         }).collect::<Vec<DeserializedAccount>>();
 
         *bin.lock().unwrap() = fetched_accounts;
@@ -164,7 +159,7 @@ impl Probe {
         println!("{:?}", time.elapsed());
     }
 
-    fn fetch_accounts(
+    fn _fetch_accounts(
         rpc_client: &RpcClient,
         pubkeys: &Vec<Pubkey>
     ) -> Vec<Option<Account>> {
@@ -173,7 +168,7 @@ impl Probe {
                 Some(accounts)
             }
             Err(err) => {
-                eprintln!("failed to fetch pubkey");
+                eprintln!("failed to fetch pubkeys");
                 None
             }
         }.unwrap_or(vec!())

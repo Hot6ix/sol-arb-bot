@@ -1,8 +1,10 @@
 use std::any::Any;
-use std::io::Error;
+use std::cell::{RefCell, RefMut};
+use std::collections::VecDeque;
 
 use arrayref::{array_ref, array_refs};
 use num_enum::TryFromPrimitive;
+use numext_fixed_uint::U1024;
 use serde::Deserialize;
 use solana_sdk::account::Account;
 use solana_sdk::pubkey::Pubkey;
@@ -14,7 +16,10 @@ use crate::formula::base::Formula::{ConcentratedLiquidity, ConstantProduct};
 use crate::formula::constant_product::{ConstantProductBase, DefaultConstantProduct};
 use crate::r#struct::market::{Market, PoolOperation};
 use crate::utils::PubkeyPair;
-use crate::constants::{RAYDIUM_CLMM_AMM_CONFIG, RAYDIUM_CLMM_OBSERVATION_KEY};
+use crate::constants::*;
+use crate::formula::clmm::constant::{MAX_TICK, MIN_TICK, POOL_SEED};
+use crate::formula::clmm::tick_array::{check_current_tick_array_is_initialized, get_bitmap_offset, max_tick_in_tick_array_bitmap, next_initialized_tick_array_start_index, tick_array_offset_in_bitmap, TickArrayBitmapExtension, TickArrayBitmapExtensionAccount, TickArrayState, TickArrayStateAccount};
+use crate::formula::concentrated_liquidity::swap_internal;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct RaydiumClmmMarket {
@@ -44,7 +49,7 @@ pub struct RaydiumClmmMarket {
     pub swap_out_amount_token_0: u128, // 16
     pub status: u8, // 1
     pub padding: [u8; 7], // 7
-    pub reward_info: [RewardInfo; 3], // 169 * 3; 507
+    pub reward_info: [RaydiumRewardInfo; 3], // 169 * 3; 507
     pub tick_array_bitmap: [u64; 16], // 128
     pub total_fees_token_0: u64, // 8
     pub total_fees_claimed_token_0: u64, // 8
@@ -91,8 +96,8 @@ impl AccountDataSerializer for RaydiumClmmMarket {
             swap_out_amount_token_0: u128::from_le_bytes(*swap_out_amount_token_0),
             status: u8::from_le_bytes(*status),
             padding: *padding,
-            reward_info: RewardInfo::unpack_data_set(*reward_infos),
-            tick_array_bitmap: [0u64; 16], // temp
+            reward_info: RaydiumRewardInfo::unpack_data_set(*reward_infos),
+            tick_array_bitmap: bytemuck::cast(*tick_array_bitmap), // todo
             total_fees_token_0: u64::from_le_bytes(*total_fees_token_0),
             total_fees_claimed_token_0: u64::from_le_bytes(*total_fees_claimed_token_0),
             total_fees_token_1: u64::from_le_bytes(*total_fees_token_1),
@@ -101,8 +106,8 @@ impl AccountDataSerializer for RaydiumClmmMarket {
             fund_fees_token_1: u64::from_le_bytes(*fund_fees_token_1),
             open_time: u64::from_le_bytes(*open_time),
             recent_epoch: u64::from_le_bytes(*recent_epoch),
-            padding1: [0u64; 24], // temp
-            padding2: [0u64; 32], // temp
+            padding1: [0u64; 24], // todo
+            padding2: [0u64; 32], // todo
         }
     }
 }
@@ -136,16 +141,17 @@ impl PoolOperation for RaydiumClmmMarket {
     }
 
     fn swap(&self, accounts: &Vec<DeserializedAccount>) {
+        let mut market = RaydiumClmmMarket::default();
         let mut amm_config = AmmConfig::default();
+        let mut tick_array_states: VecDeque<TickArrayState> = VecDeque::new();
+        let mut tick_array_bitmap_extension = TickArrayBitmapExtension::default();
+
         accounts.iter().for_each(|account| {
             match account {
-                DeserializedAccount::Account(_) => {}
                 DeserializedAccount::PoolAccount(pool) => {
-                    if let Some(market) = pool.operation.as_any().downcast_ref::<RaydiumClmmMarket>() {
-
+                    if let Some(raydium_clmm_market) = pool.operation.as_any().downcast_ref::<RaydiumClmmMarket>() {
+                        market = *raydium_clmm_market;
                     }
-                }
-                DeserializedAccount::TokenAccount(token) => {
                 }
                 DeserializedAccount::ConfigAccount(config) => {
                     match config {
@@ -155,14 +161,35 @@ impl PoolOperation for RaydiumClmmMarket {
                                     amm_config = amm.config
                                 }
                                 RaydiumClmmAccount::ObservationKey => {}
+                                RaydiumClmmAccount::TickArrayState(state) => {
+                                    tick_array_states.push_back(state.tick_array_state.clone())
+                                }
+                                RaydiumClmmAccount::TickArrayBitmapExtension(extension) => {
+                                    tick_array_bitmap_extension = extension.tick_array_bitmap_extension.clone()
+                                }
                                 _ => {}
                             }
                         }
                         _ => {}
                     }
                 }
+                DeserializedAccount::Account(_) => {}
+                DeserializedAccount::TokenAccount(_) => {}
             }
         });
+
+        let sqrt_price_x64 = market.sqrt_price_x64;
+
+        swap_internal(
+            &amm_config,
+            &mut market,
+            &mut tick_array_states,
+            &Some(&tick_array_bitmap_extension),
+            0u128,
+            sqrt_price_x64,
+            false,
+            false
+        ).expect("swap failed");
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -171,6 +198,19 @@ impl PoolOperation for RaydiumClmmMarket {
 }
 
 impl RaydiumClmmMarket {
+    pub fn key(&self, program_id: &Pubkey) -> Pubkey {
+        Pubkey::create_program_address(
+            &[
+                &POOL_SEED.as_bytes(),
+                self.amm_config.as_ref(),
+                self.token_mint_0.as_ref(),
+                self.token_mint_1.as_ref(),
+                self.bump.as_ref(),
+            ],
+            program_id
+        ).unwrap()
+    }
+
     pub fn resolve(pubkey: Pubkey, account: Account) -> RaydiumClmmAccount {
         RaydiumClmmAccount::AmmConfig(
             AmmConfigAccount {
@@ -181,21 +221,118 @@ impl RaydiumClmmMarket {
         )
     }
 
-    pub fn get_first_initialized_tick_array(
-        &self,
-        // tickarray_bitmap_extension: &Option<TickArrayBitmapExtension>,
-        zero_for_one: bool,
-    ) -> Result<(bool, i32), Error> {
-        Ok((true, -1i32))
+    pub fn is_overflow_default_tick_array_bitmap(&self, tick_index_array: Vec<i32>) -> bool {
+        let (min_tick_array_start_index_boundary, max_tick_array_index_boundary) =
+            self.tick_array_start_index_range();
+        for tick_index in tick_index_array {
+            let tick_array_start_index =
+                TickArrayState::get_array_start_index(tick_index, self.tick_spacing);
+            if tick_array_start_index >= max_tick_array_index_boundary
+                || tick_array_start_index < min_tick_array_start_index_boundary
+            {
+                return true;
+            }
+        }
+        false
     }
 
-    pub fn is_overflow_default_tick_array_bitmap(&self, tick_index_array: Vec<i32>) {
+    pub fn tick_array_start_index_range(&self) -> (i32, i32) {
+        let mut max_tick_boundary =
+            max_tick_in_tick_array_bitmap(self.tick_spacing);
+        let mut min_tick_boundary = -max_tick_boundary;
+        if max_tick_boundary > MAX_TICK {
+            max_tick_boundary =
+                TickArrayState::get_array_start_index(MAX_TICK, self.tick_spacing);
+            // find the next tick array start index
+            max_tick_boundary = max_tick_boundary + TickArrayState::tick_count(self.tick_spacing);
+        }
+        if min_tick_boundary < MIN_TICK {
+            min_tick_boundary =
+                TickArrayState::get_array_start_index(MIN_TICK, self.tick_spacing);
+        }
+        (min_tick_boundary, max_tick_boundary)
+    }
 
+    pub fn get_first_initialized_tick_array(
+        &self,
+        tick_array_bitmap_extension: &Option<&TickArrayBitmapExtension>,
+        zero_for_one: bool,
+    ) -> Result<(bool, i32), &'static str> {
+        let (is_initialized, start_index) =
+            if self.is_overflow_default_tick_array_bitmap(vec![self.tick_current]) {
+                tick_array_bitmap_extension
+                    .unwrap()
+                    .check_tick_array_is_initialized(
+                        TickArrayState::get_array_start_index(self.tick_current, self.tick_spacing), //-20520
+                        self.tick_spacing,
+                    )?
+            } else {
+                check_current_tick_array_is_initialized(
+                    U1024(self.tick_array_bitmap),
+                    self.tick_current,
+                    self.tick_spacing.into(),
+                )?
+            };
+        if is_initialized {
+            return Ok((true, start_index));
+        }
+        let next_start_index = self.next_initialized_tick_array_start_index(
+            tick_array_bitmap_extension,
+            TickArrayState::get_array_start_index(self.tick_current, self.tick_spacing),
+            zero_for_one,
+        )?;
+        return Ok((false, next_start_index.unwrap()))
+    }
+
+    pub fn next_initialized_tick_array_start_index(
+        &self,
+        tick_array_bitmap_extension: &Option<&TickArrayBitmapExtension>,
+        mut last_tick_array_start_index: i32,
+        zero_for_one: bool,
+    ) -> Result<Option<i32>, &'static str> {
+        last_tick_array_start_index =
+            TickArrayState::get_array_start_index(last_tick_array_start_index, self.tick_spacing);
+
+        loop {
+            let (is_found, start_index) =
+                next_initialized_tick_array_start_index(
+                    U1024(self.tick_array_bitmap),
+                    last_tick_array_start_index,
+                    self.tick_spacing,
+                    zero_for_one,
+                );
+            if is_found {
+                return Ok(Some(start_index));
+            }
+            last_tick_array_start_index = start_index;
+
+            if tick_array_bitmap_extension.is_none() {
+                return Err("missing tick array bitmap extension account");
+            }
+
+            let (is_found, start_index) = tick_array_bitmap_extension
+                .unwrap()
+                .next_initialized_tick_array_from_one_bitmap(
+                    last_tick_array_start_index,
+                    self.tick_spacing,
+                    zero_for_one,
+                )?;
+            if is_found {
+                return Ok(Some(start_index));
+            }
+            last_tick_array_start_index = start_index;
+
+            if last_tick_array_start_index < MIN_TICK
+                || last_tick_array_start_index > MAX_TICK
+            {
+                return Ok(None);
+            }
+        }
     }
 }
 
 #[derive(Copy, Clone, Debug, Default)]
-pub struct RewardInfo { // 169
+pub struct RaydiumRewardInfo { // 169
     pub reward_state: u8, // 1
     pub open_time: u64, // 8
     pub end_time: u64, // 8
@@ -209,13 +346,19 @@ pub struct RewardInfo { // 169
     pub reward_growth_global_x64: u128 // 16
 }
 
-impl AccountDataSerializer for RewardInfo {
+impl RaydiumRewardInfo {
+    pub fn initialized(&self) -> bool {
+        self.token_mint.ne(&Pubkey::default())
+    }
+}
+
+impl AccountDataSerializer for RaydiumRewardInfo {
     fn unpack_data(data: &Vec<u8>) -> Self {
         let src = array_ref![data, 0, 169];
         let (reward_state, open_time, end_time, last_update_time, emissions_per_second_x64, reward_total_emissioned, reward_claimed, token_mint, token_vault, authority, reward_growth_global_x64) =
             array_refs![src, 1, 8, 8, 8, 16, 8, 8, 32, 32, 32, 16];
 
-        RewardInfo {
+        RaydiumRewardInfo {
             reward_state: u8::from_le_bytes(*reward_state),
             open_time: u64::from_le_bytes(*open_time),
             end_time: u64::from_le_bytes(*end_time),
@@ -231,8 +374,8 @@ impl AccountDataSerializer for RewardInfo {
     }
 }
 
-impl RewardInfo {
-    fn unpack_data_set(data: [u8; 507]) -> [RewardInfo; 3] {
+impl RaydiumRewardInfo {
+    fn unpack_data_set(data: [u8; 507]) -> [RaydiumRewardInfo; 3] {
         let index = data.len() / 3;
         let (first, rest) = data.split_at_checked(index).unwrap();
         let (second, third) = rest.split_at_checked(index).unwrap();
@@ -287,10 +430,12 @@ pub struct AmmConfigAccount {
     pub market: Market,
 }
 
-#[derive(Clone, Deserialize, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum RaydiumClmmAccount {
     AmmConfig(AmmConfigAccount),
-    ObservationKey
+    ObservationKey,
+    TickArrayState(TickArrayStateAccount),
+    TickArrayBitmapExtension(TickArrayBitmapExtensionAccount)
 }
 
 impl RaydiumClmmAccount {
@@ -319,7 +464,22 @@ impl RaydiumClmmAccount {
                 })
             }
             RAYDIUM_CLMM_OBSERVATION_KEY => {
+                // todo
                 RaydiumClmmAccount::ObservationKey
+            }
+            RAYDIUM_CLMM_TICK_ARRAY_BITMAP_EXTENSION => {
+                RaydiumClmmAccount::TickArrayBitmapExtension(TickArrayBitmapExtensionAccount {
+                    pubkey,
+                    market: Market::RAYDIUM,
+                    tick_array_bitmap_extension: TickArrayBitmapExtension::unpack_data(data),
+                })
+            }
+            RAYDIUM_CLMM_TICK_ARRAY_STATE => {
+                RaydiumClmmAccount::TickArrayState(TickArrayStateAccount {
+                    pubkey,
+                    market: Market::RAYDIUM,
+                    tick_array_state: TickArrayState::unpack_data(data)
+                })
             }
             _ => {
                 panic!("unknown account: RaydiumClmmAccount")
@@ -327,7 +487,6 @@ impl RaydiumClmmAccount {
         }
     }
 }
-
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 #[derive(Copy, Clone, Debug, Default)]

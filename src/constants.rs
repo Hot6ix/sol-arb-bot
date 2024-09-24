@@ -11,3 +11,5 @@ pub const RAYDIUM_CLMM_DATA_LEN: usize = 1544;
 pub const RAYDIUM_CPMM_DATA_LEN: usize = 752;
 pub const RAYDIUM_CLMM_AMM_CONFIG: usize = 117;
 pub const RAYDIUM_CLMM_OBSERVATION_KEY: usize = 4483;
+pub const RAYDIUM_CLMM_TICK_ARRAY_STATE: usize = 10232;
+pub const RAYDIUM_CLMM_TICK_ARRAY_BITMAP_EXTENSION: usize = 1824;
