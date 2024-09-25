@@ -22,19 +22,30 @@ pub fn swap_internal(
     if amount_specified.is_zero() {
         return Err("Zero amount specified")
     }
-    // todo
-    // if !pool_state.get_status_by_bit(PoolStatusBitIndex::Swap) {
-    //     return err!(ErrorCode::NotApproved);
-    // }
-    if zero_for_one {
-        if sqrt_price_limit_x64 >= pool_state.sqrt_price_x64
-            || sqrt_price_limit_x64 <= MIN_SQRT_PRICE_X64 {
-            return Err("sqrt_price_limit_x64 overflow")
+
+    let sqrt_price_limit_x64 = if sqrt_price_limit_x64 == 0 {
+        if zero_for_one {
+            MIN_SQRT_PRICE_X64 + 1
+        } else {
+            MAX_SQRT_PRICE_X64 - 1
         }
     } else {
-        if sqrt_price_limit_x64 <= pool_state.sqrt_price_x64
-            || sqrt_price_limit_x64 >= MAX_SQRT_PRICE_X64 {
-            return Err("sqrt_price_limit_x64 overflow")
+        sqrt_price_limit_x64
+    };
+
+    if zero_for_one {
+        if sqrt_price_limit_x64 < MIN_SQRT_PRICE_X64 {
+            return Err("sqrt_price_limit_x64 must greater than MIN_SQRT_PRICE_X64");
+        }
+        if sqrt_price_limit_x64 >= pool_state.sqrt_price_x64 {
+            return Err("sqrt_price_limit_x64 must smaller than current");
+        }
+    } else {
+        if sqrt_price_limit_x64 > MAX_SQRT_PRICE_X64 {
+            return Err("sqrt_price_limit_x64 must smaller than MAX_SQRT_PRICE_X64");
+        }
+        if sqrt_price_limit_x64 <= pool_state.sqrt_price_x64 {
+            return Err("sqrt_price_limit_x64 must greater than current");
         }
     }
 
@@ -58,12 +69,12 @@ pub fn swap_internal(
 
     let (mut is_match_pool_current_tick_array, first_valid_tick_array_start_index) =
         pool_state.get_first_initialized_tick_array(tick_array_bitmap_extension, zero_for_one)?;
-    let mut current_vaild_tick_array_start_index = first_valid_tick_array_start_index;
+    let mut current_valid_tick_array_start_index = first_valid_tick_array_start_index;
 
     let mut tick_array_current = tick_array_states.pop_front().unwrap();
 
     for _ in 0..tick_array_states.len() {
-        if tick_array_current.start_tick_index == current_vaild_tick_array_start_index {
+        if tick_array_current.start_tick_index == current_valid_tick_array_start_index {
             break;
         }
         tick_array_current = tick_array_states
@@ -71,19 +82,23 @@ pub fn swap_internal(
             .ok_or("not enough tick array account")?;
     }
 
-    if tick_array_current.start_tick_index != current_vaild_tick_array_start_index {
+    if tick_array_current.start_tick_index != current_valid_tick_array_start_index {
         return Err("invalid first tick array account")
     }
 
     /////////////////////////////////////// start of while loop
-    while state.amount_specified_remaining != 0 && state.sqrt_price_x64 != sqrt_price_limit_x64 {
+    while state.amount_specified_remaining != 0
+        && state.sqrt_price_x64 != sqrt_price_limit_x64
+        && state.tick < MAX_TICK
+        && state.tick > MIN_TICK
+    {
         let mut step = StepComputations::default();
         step.sqrt_price_start_x64 = state.sqrt_price_x64;
 
         let mut next_initialized_tick = if let Some(tick_state) = tick_array_current
             .next_initialized_tick(state.tick, pool_state.tick_spacing, zero_for_one)?
         {
-            Box::new((*tick_state).clone())
+            Box::new(*tick_state)
         } else {
             if !is_match_pool_current_tick_array {
                 is_match_pool_current_tick_array = true;
@@ -94,22 +109,22 @@ pub fn swap_internal(
         };
 
         if !next_initialized_tick.is_initialized() {
-            let next_initialized_tickarray_index = pool_state
+            let next_initialized_tick_array_index = pool_state
                 .next_initialized_tick_array_start_index(
                     tick_array_bitmap_extension,
-                    current_vaild_tick_array_start_index,
+                    current_valid_tick_array_start_index,
                     zero_for_one,
                 )?;
-            if next_initialized_tickarray_index.is_none() {
+            if next_initialized_tick_array_index.is_none() {
                 return Err("liquidity insufficient");
             }
 
-            while tick_array_current.start_tick_index != next_initialized_tickarray_index.unwrap() {
+            while tick_array_current.start_tick_index != next_initialized_tick_array_index.unwrap() {
                 tick_array_current = tick_array_states
                     .pop_front()
                     .ok_or("not enough tick array account")?;
             }
-            current_vaild_tick_array_start_index = next_initialized_tickarray_index.unwrap();
+            current_valid_tick_array_start_index = next_initialized_tick_array_index.unwrap();
 
             let first_initialized_tick = tick_array_current.first_initialized_tick(zero_for_one)?;
             next_initialized_tick = Box::new(first_initialized_tick.clone());
@@ -144,15 +159,15 @@ pub fn swap_internal(
             zero_for_one
         )?;
 
-        if zero_for_one {
-            if swap_step.sqrt_price_next_x64 < target_price {
-                return Err("invalid result")
-            }
-        } else {
-            if target_price < swap_step.sqrt_price_next_x64 {
-                return Err("invalid result")
-            }
-        }
+        // if zero_for_one {
+        //     if swap_step.sqrt_price_next_x64 < target_price {
+        //         return Err("invalid result")
+        //     }
+        // } else {
+        //     if target_price < swap_step.sqrt_price_next_x64 {
+        //         return Err("invalid result")
+        //     }
+        // }
 
         state.sqrt_price_x64 = swap_step.sqrt_price_next_x64;
         step.amount_in = swap_step.amount_in;
@@ -184,73 +199,59 @@ pub fn swap_internal(
                 .expect("calculate overflow");
         }
 
-        let step_fee_amount = step.fee_amount;
+        // let step_fee_amount = step.fee_amount;
+        //
+        // if amm_config.protocol_fee_rate > 0 {
+        //     let delta = U128::from(step_fee_amount)
+        //         .checked_mul(&U128::from(amm_config.protocol_fee_rate))
+        //         .unwrap()
+        //         .checked_div(&U128::from(FEE_RATE_DENOMINATOR_VALUE))
+        //         .unwrap()
+        //         .to_le_bytes();
+        //     step.fee_amount = step.fee_amount.checked_sub(u128::from_le_bytes(delta)).unwrap();
+        //     state.protocol_fee = state.protocol_fee.checked_add(u128::from_le_bytes(delta)).unwrap();
+        // }
+        //
+        // if amm_config.fund_fee_rate > 0 {
+        //     let delta = U128::from(step_fee_amount)
+        //         .checked_mul(&U128::from(amm_config.fund_fee_rate))
+        //         .unwrap()
+        //         .checked_div(&U128::from(FEE_RATE_DENOMINATOR_VALUE))
+        //         .unwrap()
+        //         .to_le_bytes();
+        //     step.fee_amount = step.fee_amount.checked_sub(u128::from_le_bytes(delta)).unwrap();
+        //     state.fund_fee = state.fund_fee.checked_add(u128::from_le_bytes(delta)).unwrap();
+        // }
 
-        if amm_config.protocol_fee_rate > 0 {
-            let delta = U128::from(step_fee_amount)
-                .checked_mul(&U128::from(amm_config.protocol_fee_rate))
-                .unwrap()
-                .checked_div(&U128::from(FEE_RATE_DENOMINATOR_VALUE))
-                .unwrap()
-                .to_le_bytes();
-            step.fee_amount = step.fee_amount.checked_sub(u128::from_le_bytes(delta)).unwrap();
-            state.protocol_fee = state.protocol_fee.checked_add(u128::from_le_bytes(delta)).unwrap();
-        }
-
-        if amm_config.fund_fee_rate > 0 {
-            let delta = U128::from(step_fee_amount)
-                .checked_mul(&U128::from(amm_config.fund_fee_rate))
-                .unwrap()
-                .checked_div(&U128::from(FEE_RATE_DENOMINATOR_VALUE))
-                .unwrap()
-                .to_le_bytes();
-            step.fee_amount = step.fee_amount.checked_sub(u128::from_le_bytes(delta)).unwrap();
-            state.fund_fee = state.fund_fee.checked_add(u128::from_le_bytes(delta)).unwrap();
-        }
-
-        if state.liquidity > 0 {
-            // todo
-            // let fee_growth_global_x64_delta = U128::from(step.fee_amount)
-            //     .mul_div_floor(Q64, U128::from(state.liquidity))
-            //     .unwrap()
-            //     .as_u128();
-
-            let fee_growth_global_x64_delta = BigFloat::from(step.fee_amount)
-                .mul(&BigFloat::from(Q64))
-                .div(&BigFloat::from(state.liquidity))
-                .floor()
-                .to_u128()
-                .unwrap();
-
-            state.fee_growth_global_x64 = state
-                .fee_growth_global_x64
-                .checked_add(fee_growth_global_x64_delta)
-                .unwrap();
-            state.fee_amount = state.fee_amount.checked_add(step.fee_amount).unwrap();
-        }
+        // if state.liquidity > 0 {
+        //     // todo
+        //     // let fee_growth_global_x64_delta = U128::from(step.fee_amount)
+        //     //     .mul_div_floor(Q64, U128::from(state.liquidity))
+        //     //     .unwrap()
+        //     //     .as_u128();
+        //
+        //     let fee_growth_global_x64_delta = BigFloat::from(step.fee_amount)
+        //         .mul(&BigFloat::from(Q64))
+        //         .div(&BigFloat::from(state.liquidity))
+        //         .floor()
+        //         .to_u128()
+        //         .unwrap();
+        //
+        //     state.fee_growth_global_x64 = state
+        //         .fee_growth_global_x64
+        //         .checked_add(fee_growth_global_x64_delta)
+        //         .unwrap();
+        //     state.fee_amount = state.fee_amount.checked_add(step.fee_amount).unwrap();
+        // }
 
         if state.sqrt_price_x64 == step.sqrt_price_next_x64 {
             if step.initialized {
-                // todo
-                // let mut liquidity_net = next_initialized_tick.cross(
-                //     if zero_for_one {
-                //         state.fee_growth_global_x64
-                //     } else {
-                //         pool_state.fee_growth_global_0_x64
-                //     },
-                //     if zero_for_one {
-                //         pool_state.fee_growth_global_1_x64
-                //     } else {
-                //         state.fee_growth_global_x64
-                //     },
-                //     &updated_reward_infos,
-                // );
                 let mut liquidity_net = next_initialized_tick.liquidity_net;
-                tick_array_current.update_tick_state(
-                    next_initialized_tick.tick,
-                    pool_state.tick_spacing.into(),
-                    *next_initialized_tick,
-                )?;
+                // tick_array_current.update_tick_state(
+                //     next_initialized_tick.tick,
+                //     pool_state.tick_spacing.into(),
+                //     *next_initialized_tick,
+                // )?;
 
                 if zero_for_one {
                     liquidity_net = liquidity_net.neg();
@@ -269,15 +270,15 @@ pub fn swap_internal(
     }
     /////////////////////////////////////// end of while loop
 
-    if state.tick != pool_state.tick_current {
-        pool_state.tick_current = state.tick;
-    }
-
-    pool_state.sqrt_price_x64 = state.sqrt_price_x64;
-
-    if liquidity_start != state.liquidity {
-        pool_state.liquidity = state.liquidity;
-    }
+    // if state.tick != pool_state.tick_current {
+    //     pool_state.tick_current = state.tick;
+    // }
+    //
+    // pool_state.sqrt_price_x64 = state.sqrt_price_x64;
+    //
+    // if liquidity_start != state.liquidity {
+    //     pool_state.liquidity = state.liquidity;
+    // }
 
     let (amount_0, amount_1) = if zero_for_one == is_base_input {
         (
@@ -295,61 +296,61 @@ pub fn swap_internal(
         )
     };
 
-    if zero_for_one {
-        pool_state.fee_growth_global_0_x64 = state.fee_growth_global_x64;
-        pool_state.total_fees_token_0 = pool_state
-            .total_fees_token_0
-            .checked_add(state.fee_amount as u64)
-            .unwrap();
-
-        if state.protocol_fee > 0 {
-            pool_state.protocol_fees_token_0 = pool_state
-                .protocol_fees_token_0
-                .checked_add(state.protocol_fee as u64)
-                .unwrap();
-        }
-        if state.fund_fee > 0 {
-            pool_state.fund_fees_token_0 = pool_state
-                .fund_fees_token_0
-                .checked_add(state.fund_fee as u64)
-                .unwrap();
-        }
-        pool_state.swap_in_amount_token_0 = pool_state
-            .swap_in_amount_token_0
-            .checked_add(u128::from(amount_0))
-            .unwrap();
-        pool_state.swap_out_amount_token_1 = pool_state
-            .swap_out_amount_token_1
-            .checked_add(u128::from(amount_1))
-            .unwrap();
-    } else {
-        pool_state.fee_growth_global_1_x64 = state.fee_growth_global_x64;
-        pool_state.total_fees_token_1 = pool_state
-            .total_fees_token_1
-            .checked_add(state.fee_amount as u64)
-            .unwrap();
-
-        if state.protocol_fee > 0 {
-            pool_state.protocol_fees_token_1 = pool_state
-                .protocol_fees_token_1
-                .checked_add(state.protocol_fee as u64)
-                .unwrap();
-        }
-        if state.fund_fee > 0 {
-            pool_state.fund_fees_token_1 = pool_state
-                .fund_fees_token_1
-                .checked_add(state.fund_fee as u64)
-                .unwrap();
-        }
-        pool_state.swap_in_amount_token_1 = pool_state
-            .swap_in_amount_token_1
-            .checked_add(u128::from(amount_1))
-            .unwrap();
-        pool_state.swap_out_amount_token_0 = pool_state
-            .swap_out_amount_token_0
-            .checked_add(u128::from(amount_0))
-            .unwrap();
-    }
+    // if zero_for_one {
+    //     pool_state.fee_growth_global_0_x64 = state.fee_growth_global_x64;
+    //     pool_state.total_fees_token_0 = pool_state
+    //         .total_fees_token_0
+    //         .checked_add(state.fee_amount as u64)
+    //         .unwrap();
+    //
+    //     if state.protocol_fee > 0 {
+    //         pool_state.protocol_fees_token_0 = pool_state
+    //             .protocol_fees_token_0
+    //             .checked_add(state.protocol_fee as u64)
+    //             .unwrap();
+    //     }
+    //     if state.fund_fee > 0 {
+    //         pool_state.fund_fees_token_0 = pool_state
+    //             .fund_fees_token_0
+    //             .checked_add(state.fund_fee as u64)
+    //             .unwrap();
+    //     }
+    //     pool_state.swap_in_amount_token_0 = pool_state
+    //         .swap_in_amount_token_0
+    //         .checked_add(u128::from(amount_0))
+    //         .unwrap();
+    //     pool_state.swap_out_amount_token_1 = pool_state
+    //         .swap_out_amount_token_1
+    //         .checked_add(u128::from(amount_1))
+    //         .unwrap();
+    // } else {
+    //     pool_state.fee_growth_global_1_x64 = state.fee_growth_global_x64;
+    //     pool_state.total_fees_token_1 = pool_state
+    //         .total_fees_token_1
+    //         .checked_add(state.fee_amount as u64)
+    //         .unwrap();
+    //
+    //     if state.protocol_fee > 0 {
+    //         pool_state.protocol_fees_token_1 = pool_state
+    //             .protocol_fees_token_1
+    //             .checked_add(state.protocol_fee as u64)
+    //             .unwrap();
+    //     }
+    //     if state.fund_fee > 0 {
+    //         pool_state.fund_fees_token_1 = pool_state
+    //             .fund_fees_token_1
+    //             .checked_add(state.fund_fee as u64)
+    //             .unwrap();
+    //     }
+    //     pool_state.swap_in_amount_token_1 = pool_state
+    //         .swap_in_amount_token_1
+    //         .checked_add(u128::from(amount_1))
+    //         .unwrap();
+    //     pool_state.swap_out_amount_token_0 = pool_state
+    //         .swap_out_amount_token_0
+    //         .checked_add(u128::from(amount_0))
+    //         .unwrap();
+    // }
 
     Ok((amount_0 as u64, amount_1 as u64))
 }

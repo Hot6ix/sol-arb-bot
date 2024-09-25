@@ -1,11 +1,12 @@
 use arrayref::{array_ref, array_refs};
-use solana_sdk::pubkey::Pubkey;
 use num_traits::Zero;
 use numext_fixed_uint::{U1024, u128, U512};
+use solana_sdk::pubkey::Pubkey;
+
 use crate::account::account::AccountDataSerializer;
-use crate::formula::clmm::constant::{MAX_TICK, MIN_TICK, POOL_TICK_ARRAY_BITMAP_SEED, TICK_ARRAY_BITMAP_SIZE, TICK_ARRAY_SEED, TICK_ARRAY_SIZE, TICK_ARRAY_SIZE_USIZE};
+use crate::formula::clmm::constant::{MAX_TICK, MIN_TICK, POOL_TICK_ARRAY_BITMAP_SEED, TICK_ARRAY_BITMAP_SIZE, TICK_ARRAY_SIZE, TICK_ARRAY_SIZE_USIZE};
 use crate::r#struct::market::Market;
-use crate::r#struct::pools::{RaydiumRewardInfo};
+use crate::r#struct::pools::RaydiumRewardInfo;
 
 #[repr(packed)]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -29,6 +30,24 @@ impl Default for TickState {
             fee_growth_outside_1_x64: u128::default(),
             reward_growths_outside_x64: [u128::default(); 3],
             padding: [u32::default(); 13],
+        }
+    }
+}
+
+impl AccountDataSerializer for TickState {
+    fn unpack_data(data: &Vec<u8>) -> Self {
+        let src = array_ref![data, 0, 168];
+        let (tick, liquidity_net, liquidity_gross, fee_growth_outside_0_x64, fee_growth_outside_1_x64, reward_growths_outside_x64, padding) =
+            array_refs![src, 4, 16, 16, 16, 16, 48, 52];
+
+        TickState {
+            tick: i32::from_le_bytes(*tick),
+            liquidity_net: i128::from_le_bytes(*liquidity_net),
+            liquidity_gross: u128::from_le_bytes(*liquidity_gross),
+            fee_growth_outside_0_x64: u128::from_le_bytes(*fee_growth_outside_0_x64),
+            fee_growth_outside_1_x64: u128::from_le_bytes(*fee_growth_outside_1_x64),
+            reward_growths_outside_x64: bytemuck::cast(*reward_growths_outside_x64),
+            padding: Self::unpack_padding(*padding),
         }
     }
 }
@@ -68,6 +87,26 @@ impl TickState {
     pub fn is_initialized(&self) -> bool {
         self.liquidity_gross != 0
     }
+
+    fn unpack_data_set(data: [u8; 10080]) -> [TickState; 60] {
+        let mut vec: Vec<TickState> = Vec::new();
+
+        data.chunks_exact(60).for_each(|array| {
+            vec.push(TickState::unpack_data(&array.to_vec()))
+        });
+
+        vec.try_into().unwrap()
+    }
+
+    fn unpack_padding(data: [u8; 52]) -> [u32; 13] {
+        let mut vec: Vec<u32> = Vec::new();
+
+        data.chunks_exact(13).for_each(|array| {
+            vec.push(u32::from_le_bytes(array.try_into().unwrap()))
+        });
+
+        vec.try_into().unwrap()
+    }
 }
 
 #[derive(Clone, Default, PartialEq)]
@@ -106,14 +145,13 @@ impl AccountDataSerializer for TickArrayState {
         let (pool_id, start_tick_index, ticks, initialized_tick_count, recent_epoch, padding) =
             array_refs![src, 32, 4, 10080, 1, 8, 107];
 
-        // todo
         TickArrayState {
-            pool_id: Default::default(),
-            start_tick_index: 0,
-            ticks: [TickState::default(); 60],
-            initialized_tick_count: 0,
-            recent_epoch: 0,
-            padding: [u8::default(); 107],
+            pool_id: Pubkey::new_from_array(*pool_id),
+            start_tick_index: i32::from_le_bytes(*start_tick_index),
+            ticks: TickState::unpack_data_set(*ticks),
+            initialized_tick_count: u8::from_le_bytes(*initialized_tick_count),
+            recent_epoch: u64::from_le_bytes(*recent_epoch),
+            padding: *padding,
         }
     }
 }
@@ -243,13 +281,10 @@ impl AccountDataSerializer for TickArrayBitmapExtension {
         let (pool_id, positive_tick_array_bitmap, negative_tick_array_bitmap) =
             array_refs![src, 32, 896, 896];
 
-        // let positive_tick_array_bitmap: [[u64; 8]; 14] = bytemuck::cast(positive_tick_array_bitmap);
-        // let negative_tick_array_bitmap: [[u64; 8]; 14] = bytemuck::cast(negative_tick_array_bitmap);
-        // todo
         TickArrayBitmapExtension {
             pool_id: Pubkey::new_from_array(*pool_id),
-            positive_tick_array_bitmap: [[0u64;8]; 14],
-            negative_tick_array_bitmap: [[0u64;8]; 14],
+            positive_tick_array_bitmap: TickArrayBitmapExtension::unpack_tick_array_bitmap(*positive_tick_array_bitmap),
+            negative_tick_array_bitmap: TickArrayBitmapExtension::unpack_tick_array_bitmap(*negative_tick_array_bitmap),
         }
     }
 }
@@ -372,6 +407,23 @@ impl TickArrayBitmapExtension {
         else {
             None
         }
+    }
+
+    fn unpack_tick_array_bitmap(data: [u8; 896]) -> [[u64; 8]; 14]{
+        // negative_tick_array_bitmap: [[0u64;8]; 14],
+        let mut vec: Vec<[u64; 8]> = Vec::new();
+        data.chunks_exact(14).for_each(|tick| {
+            let mut tick_vec: Vec<u64> = Vec::new();
+
+            tick.chunks(8).for_each(|tick_value| {
+                let value = u64::from_le_bytes(tick_value.try_into().unwrap());
+                tick_vec.push(value)
+            });
+
+            vec.push(tick_vec.try_into().unwrap());
+        });
+
+        vec.try_into().unwrap()
     }
 }
 

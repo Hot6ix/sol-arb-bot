@@ -4,7 +4,8 @@ pub enum Formula {
     UnknownFormula,
     ConstantProduct,
     ConcentratedLiquidity,
-    DynamicLiquidity
+    DynamicLiquidity,
+    OpenBook
 }
 
 pub trait SwapSimulator {

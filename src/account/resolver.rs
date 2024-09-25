@@ -4,9 +4,9 @@ use solana_sdk::pubkey::Pubkey;
 use crate::account::account::{AccountDataSerializer, DeserializedConfigAccount};
 use crate::constants::RAYDIUM_CLMM_DATA_LEN;
 use crate::constants::RAYDIUM_CLMM_PROGRAM_PUBKEY;
-use crate::constants::RAYDIUM_CPMM_V4_PROGRAM_PUBKEY;
+use crate::constants::RAYDIUM_OPEN_BOOK_PROGRAM_PUBKEY;
 use crate::r#struct::market::{Market, PoolOperation};
-use crate::r#struct::pools::{MeteoraClmmMarket, OrcaClmmAccount, OrcaClmmMarket, RaydiumClmmAccount, RaydiumClmmMarket, RaydiumCpmmMarket, WhirlpoolsConfig, WhirlpoolsConfigAccount};
+use crate::r#struct::pools::{MeteoraClmmMarket, OrcaClmmAccount, OrcaClmmMarket, RaydiumClmmAccount, RaydiumClmmMarket, RaydiumOpenBookMarket, WhirlpoolsConfig, WhirlpoolsConfigAccount};
 use crate::r#struct::pools::lifinity::LifinityMarket;
 
 pub fn resolve_pool_account(market: &Market, data: &Vec<u8>) -> Box<dyn PoolOperation> {
@@ -19,7 +19,7 @@ pub fn resolve_pool_account(market: &Market, data: &Vec<u8>) -> Box<dyn PoolOper
                 Box::new(RaydiumClmmMarket::unpack_data(data))
             }
             else {
-                Box::new(RaydiumCpmmMarket::unpack_data(data))
+                Box::new(RaydiumOpenBookMarket::unpack_data(data))
             }
         }
         Market::METEORA => {
@@ -52,7 +52,7 @@ pub fn resolve_pool_config_account(market: &Market, owner_pubkey: &Pubkey, accou
                         RaydiumClmmAccount::resolve_account(account_pubkey, data)
                     )
                 }
-                RAYDIUM_CPMM_V4_PROGRAM_PUBKEY => {
+                RAYDIUM_OPEN_BOOK_PROGRAM_PUBKEY => {
                     panic!("unknown account: RaydiumCpmmAccount")
                 }
                 _ => {

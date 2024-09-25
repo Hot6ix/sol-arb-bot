@@ -1,5 +1,4 @@
 use std::any::Any;
-use std::cell::{RefCell, RefMut};
 use std::collections::VecDeque;
 
 use arrayref::{array_ref, array_refs};
@@ -11,15 +10,15 @@ use solana_sdk::pubkey::Pubkey;
 
 use crate::account::account::{AccountDataSerializer, DeserializedAccount, DeserializedConfigAccount, DeserializedPoolAccount, DeserializedTokenAccount};
 use crate::account::account::DeserializedConfigAccount::RaydiumClmmConfigAccount;
+use crate::constants::*;
 use crate::formula::base::Formula;
 use crate::formula::base::Formula::{ConcentratedLiquidity, ConstantProduct};
+use crate::formula::clmm::constant::{MAX_TICK, MIN_TICK, POOL_SEED};
+use crate::formula::clmm::tick_array::{check_current_tick_array_is_initialized, max_tick_in_tick_array_bitmap, next_initialized_tick_array_start_index, TickArrayBitmapExtension, TickArrayBitmapExtensionAccount, TickArrayState, TickArrayStateAccount};
+use crate::formula::concentrated_liquidity::swap_internal;
 use crate::formula::constant_product::{ConstantProductBase, DefaultConstantProduct};
 use crate::r#struct::market::{Market, PoolOperation};
 use crate::utils::PubkeyPair;
-use crate::constants::*;
-use crate::formula::clmm::constant::{MAX_TICK, MIN_TICK, POOL_SEED};
-use crate::formula::clmm::tick_array::{check_current_tick_array_is_initialized, get_bitmap_offset, max_tick_in_tick_array_bitmap, next_initialized_tick_array_start_index, tick_array_offset_in_bitmap, TickArrayBitmapExtension, TickArrayBitmapExtensionAccount, TickArrayState, TickArrayStateAccount};
-use crate::formula::concentrated_liquidity::swap_internal;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct RaydiumClmmMarket {
@@ -69,6 +68,13 @@ impl AccountDataSerializer for RaydiumClmmMarket {
         let (discriminator, bump, amm_config, owner, token_mint_0, token_mint_1, token_vault_0, token_vault_1, observation_key, mint_decimals_0, mint_decimals_1, tick_spacing, liquidity, sqrt_price_x64, tick_current, padding3, padding4, fee_growth_global_0_x64, fee_growth_global_1_x64, protocol_fees_token_0, protocol_fees_token_1, swap_in_amount_token_0, swap_out_amount_token_1, swap_in_amount_token_1, swap_out_amount_token_0, status, padding, reward_infos, tick_array_bitmap, total_fees_token_0, total_fees_claimed_token_0, total_fees_token_1, total_fees_claimed_token_1, fund_fees_token_0, fund_fees_token_1, open_time, recent_epoch, padding1, padding2) =
             array_refs![src, 8, 1, 32, 32, 32, 32, 32, 32, 32, 1, 1, 2, 16, 16, 4, 2, 2, 16, 16, 8, 8, 16, 16, 16, 16, 1, 7, 507, 128, 8, 8, 8, 8, 8, 8, 8, 8, 192, 256];
 
+        let padding1_array: Vec<u64> = padding1.chunks_exact(24).map(|array| {
+            u64::from_le_bytes(array.try_into().unwrap())
+        }).collect::<Vec<u64>>();
+        let padding2_array: Vec<u64> = padding2.chunks_exact(32).map(|array| {
+            u64::from_le_bytes(array.try_into().unwrap())
+        }).collect::<Vec<u64>>();
+
         RaydiumClmmMarket {
             bump: *bump,
             amm_config: Pubkey::new_from_array(*amm_config),
@@ -97,7 +103,7 @@ impl AccountDataSerializer for RaydiumClmmMarket {
             status: u8::from_le_bytes(*status),
             padding: *padding,
             reward_info: RaydiumRewardInfo::unpack_data_set(*reward_infos),
-            tick_array_bitmap: bytemuck::cast(*tick_array_bitmap), // todo
+            tick_array_bitmap: bytemuck::cast(*tick_array_bitmap),
             total_fees_token_0: u64::from_le_bytes(*total_fees_token_0),
             total_fees_claimed_token_0: u64::from_le_bytes(*total_fees_claimed_token_0),
             total_fees_token_1: u64::from_le_bytes(*total_fees_token_1),
@@ -106,8 +112,8 @@ impl AccountDataSerializer for RaydiumClmmMarket {
             fund_fees_token_1: u64::from_le_bytes(*fund_fees_token_1),
             open_time: u64::from_le_bytes(*open_time),
             recent_epoch: u64::from_le_bytes(*recent_epoch),
-            padding1: [0u64; 24], // todo
-            padding2: [0u64; 32], // todo
+            padding1: padding1_array.try_into().unwrap(),
+            padding2: padding2_array.try_into().unwrap()
         }
     }
 }
@@ -376,15 +382,13 @@ impl AccountDataSerializer for RaydiumRewardInfo {
 
 impl RaydiumRewardInfo {
     fn unpack_data_set(data: [u8; 507]) -> [RaydiumRewardInfo; 3] {
-        let index = data.len() / 3;
-        let (first, rest) = data.split_at_checked(index).unwrap();
-        let (second, third) = rest.split_at_checked(index).unwrap();
+        let mut vec: Vec<RaydiumRewardInfo> = Vec::new();
 
-        [
-            Self::unpack_data(&Vec::from(first)),
-            Self::unpack_data(&Vec::from(second)),
-            Self::unpack_data(&Vec::from(third))
-        ]
+        data.chunks_exact(3).for_each(|array| {
+            vec.push(RaydiumRewardInfo::unpack_data(&array.to_vec()))
+        });
+
+        vec.try_into().unwrap()
     }
 }
 
@@ -490,7 +494,7 @@ impl RaydiumClmmAccount {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 #[derive(Copy, Clone, Debug, Default)]
-pub struct RaydiumCpmmMarket {
+pub struct RaydiumOpenBookMarket {
     pub status: u64,
     pub nonce: u64,
     pub max_order: u64,
@@ -545,14 +549,18 @@ pub struct RaydiumCpmmMarket {
     pub padding: [u64; 3]
 }
 
-impl AccountDataSerializer for RaydiumCpmmMarket {
+impl AccountDataSerializer for RaydiumOpenBookMarket {
     fn unpack_data(data: &Vec<u8>) -> Self {
         // no discriminator for native solana program
         let src = array_ref![data, 0, 752];
         let (status, nonce, max_order, depth, base_decimal, quote_decimal, state, reset_flag, min_size, vol_max_cut_ratio, amount_wave_ratio, base_lot_size, quote_lot_size, mint_price_multiplier, max_price_multiplier, system_decimal_value, min_separate_numerator, min_separate_denominator, trade_fee_numerator, trade_fee_denominator, pnl_numerator, pnl_denominator, swap_fee_numerator, swap_fee_denominator, base_need_take_pnl, quote_need_take_pnl, quote_total_pnl, base_total_pnl, pool_open_time, punish_pc_amount, punish_coin_amount, orderbook_to_init_time, swap_base_in_amount, swap_quote_out_amount, swap_base2_quote_fee, swap_quote_in_amount, swap_base_out_amount, swap_quote2_base_fee, base_vault, quote_vault, base_mint, quote_mint, lp_mint, open_orders, market_id, market_program_id, target_orders, withdraw_queue, lp_vault, owner, lp_reserve, padding) =
             array_refs![src, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 16, 16, 8, 16, 16, 8, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 8, 24];
 
-        RaydiumCpmmMarket {
+        let padding_array: Vec<u64> = padding.chunks_exact(3).map(|array| {
+            u64::from_le_bytes(array.try_into().unwrap())
+        }).collect::<Vec<u64>>();
+
+        RaydiumOpenBookMarket {
             status: u64::from_le_bytes(*status),
             nonce: u64::from_le_bytes(*nonce),
             max_order: u64::from_le_bytes(*max_order),
@@ -604,12 +612,12 @@ impl AccountDataSerializer for RaydiumCpmmMarket {
             lp_vault: Pubkey::new_from_array(*lp_vault),
             owner: Pubkey::new_from_array(*owner),
             lp_reserve: u64::from_le_bytes(*lp_reserve),
-            padding: [0,0,0], // temp
+            padding: padding_array.try_into().unwrap()
         }
     }
 }
 
-impl PoolOperation for RaydiumCpmmMarket {
+impl PoolOperation for RaydiumOpenBookMarket {
     fn get_mint_pair(&self) -> PubkeyPair {
         PubkeyPair {
             pubkey_a: self.base_mint,
@@ -632,44 +640,45 @@ impl PoolOperation for RaydiumCpmmMarket {
     }
 
     fn get_formula(&self) -> Formula {
-        ConstantProduct
+        Formula::OpenBook
     }
 
     fn swap(&self, accounts: &Vec<DeserializedAccount>) {
-        if !accounts.is_empty() {
-            let mut raydium_pool= &DeserializedPoolAccount::default();
-            let mut base_vault= &DeserializedTokenAccount::default();
-            let mut quote_vault= &DeserializedTokenAccount::default();
-
-            accounts.iter().for_each(|account| {
-                match account {
-                    DeserializedAccount::Account(_) => {}
-                    DeserializedAccount::PoolAccount(pool) => {
-                        raydium_pool = &pool
-                    }
-                    DeserializedAccount::TokenAccount(token) => {
-                        if token.pubkey == self.base_vault {
-                            base_vault = &token
-                        }
-                        else if token.pubkey == self.quote_vault {
-                            quote_vault = &token
-                        }
-                    }
-                    DeserializedAccount::ConfigAccount(_) => {}
-                }
-            });
-
-            let cpmm = DefaultConstantProduct {
-                token_a_amount: base_vault.get_amount(),
-                token_b_amount: quote_vault.get_amount(),
-                decimal_diff: (self.base_decimal - self.quote_decimal) as i32,
-                swap_fee_numerator: self.swap_fee_numerator,
-                swap_fee_denominator: self.swap_fee_denominator
-            };
-
-            let res = cpmm.swap(1000000000u64, true);
-            println!("{}", res);
-        }
+        todo!()
+        // if !accounts.is_empty() {
+        //     let mut raydium_pool= &DeserializedPoolAccount::default();
+        //     let mut base_vault= &DeserializedTokenAccount::default();
+        //     let mut quote_vault= &DeserializedTokenAccount::default();
+        //
+        //     accounts.iter().for_each(|account| {
+        //         match account {
+        //             DeserializedAccount::Account(_) => {}
+        //             DeserializedAccount::PoolAccount(pool) => {
+        //                 raydium_pool = &pool
+        //             }
+        //             DeserializedAccount::TokenAccount(token) => {
+        //                 if token.pubkey == self.base_vault {
+        //                     base_vault = &token
+        //                 }
+        //                 else if token.pubkey == self.quote_vault {
+        //                     quote_vault = &token
+        //                 }
+        //             }
+        //             DeserializedAccount::ConfigAccount(_) => {}
+        //         }
+        //     });
+        //
+        //     let cpmm = DefaultConstantProduct {
+        //         token_a_amount: base_vault.get_amount(),
+        //         token_b_amount: quote_vault.get_amount(),
+        //         decimal_diff: (self.base_decimal - self.quote_decimal) as i32,
+        //         swap_fee_numerator: self.swap_fee_numerator,
+        //         swap_fee_denominator: self.swap_fee_denominator
+        //     };
+        //
+        //     let res = cpmm.swap(1000000000u64, true);
+        //     println!("{}", res);
+        // }
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -678,6 +687,6 @@ impl PoolOperation for RaydiumCpmmMarket {
 }
 
 #[derive(Clone, Deserialize)]
-pub enum RaydiumCpmmAccount {
+pub enum RaydiumOpenBookAccount {
     Unknown
 }
