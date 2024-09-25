@@ -80,7 +80,6 @@ async fn main() {
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // collect swap-related pubkeys from pool accounts
-    let p = Arc::clone(&path_list);
     probe.start_watching(Arc::clone(&pool_account_bin), Arc::clone(&shared_pool_account_bin));
     probe.publisher.lock().unwrap().subscribe(Event::UpdateAccounts, || {
         println!("updated")
@@ -118,20 +117,20 @@ async fn main() {
             // });
 
             // single swap test
-            let related_pubkeys = target.1.iter().find(|pool| {
-               pool.market == RAYDIUM && pool.operation.get_formula() == Formula::ConstantProduct
-            }).unwrap().get_swap_related_pubkeys(Some(&rpc_client)).unwrap();
+            if let Ok(related_pubkeys) = target.1.iter().find(|pool| {
+               pool.market == RAYDIUM && pool.operation.get_formula() == Formula::ConcentratedLiquidity
+            }).unwrap().get_swap_related_pubkeys(Some(&rpc_client)) {
+                let related_accounts = shared_pool_account_bin.lock().unwrap().clone().into_iter().filter(|account| {
+                    related_pubkeys.iter().find(|(_, pubkey)| {
+                        *pubkey == account.get_pubkey()
+                    }).is_some()
+                }).collect::<Vec<DeserializedAccount>>();
 
-            let related_accounts = shared_pool_account_bin.lock().unwrap().clone().into_iter().filter(|account| {
-                related_pubkeys.iter().find(|(_, pubkey)| {
-                    *pubkey == account.get_pubkey()
-                }).is_some()
-            }).collect::<Vec<DeserializedAccount>>();
-
-            if let Some(target_pool) = target.1.iter().find(|pool| {
-                pool.market == RAYDIUM && pool.operation.get_formula() == Formula::ConstantProduct
-            }) {
-                target_pool.operation.swap(&related_accounts);
+                if let Some(target_pool) = target.1.iter().find(|pool| {
+                    pool.market == RAYDIUM && pool.operation.get_formula() == Formula::ConcentratedLiquidity
+                }) {
+                    target_pool.operation.swap(&related_accounts);
+                }
             }
 
             let _ = sleep(Duration::from_secs(5)).await;

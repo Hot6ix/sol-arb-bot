@@ -68,11 +68,11 @@ impl AccountDataSerializer for RaydiumClmmMarket {
         let (discriminator, bump, amm_config, owner, token_mint_0, token_mint_1, token_vault_0, token_vault_1, observation_key, mint_decimals_0, mint_decimals_1, tick_spacing, liquidity, sqrt_price_x64, tick_current, padding3, padding4, fee_growth_global_0_x64, fee_growth_global_1_x64, protocol_fees_token_0, protocol_fees_token_1, swap_in_amount_token_0, swap_out_amount_token_1, swap_in_amount_token_1, swap_out_amount_token_0, status, padding, reward_infos, tick_array_bitmap, total_fees_token_0, total_fees_claimed_token_0, total_fees_token_1, total_fees_claimed_token_1, fund_fees_token_0, fund_fees_token_1, open_time, recent_epoch, padding1, padding2) =
             array_refs![src, 8, 1, 32, 32, 32, 32, 32, 32, 32, 1, 1, 2, 16, 16, 4, 2, 2, 16, 16, 8, 8, 16, 16, 16, 16, 1, 7, 507, 128, 8, 8, 8, 8, 8, 8, 8, 8, 192, 256];
 
-        let padding1_array: Vec<u64> = padding1.chunks_exact(24).map(|array| {
-            u64::from_le_bytes(array.try_into().unwrap())
+        let padding1_array: Vec<u64> = padding1.chunks_exact(8).map(|array| {
+            u64::from_le_bytes((*array).try_into().unwrap())
         }).collect::<Vec<u64>>();
-        let padding2_array: Vec<u64> = padding2.chunks_exact(32).map(|array| {
-            u64::from_le_bytes(array.try_into().unwrap())
+        let padding2_array: Vec<u64> = padding2.chunks_exact(8).map(|array| {
+            u64::from_le_bytes((*array).try_into().unwrap())
         }).collect::<Vec<u64>>();
 
         RaydiumClmmMarket {
@@ -384,7 +384,7 @@ impl RaydiumRewardInfo {
     fn unpack_data_set(data: [u8; 507]) -> [RaydiumRewardInfo; 3] {
         let mut vec: Vec<RaydiumRewardInfo> = Vec::new();
 
-        data.chunks_exact(3).for_each(|array| {
+        data.chunks_exact(169).for_each(|array| {
             vec.push(RaydiumRewardInfo::unpack_data(&array.to_vec()))
         });
 
@@ -486,7 +486,7 @@ impl RaydiumClmmAccount {
                 })
             }
             _ => {
-                panic!("unknown account: RaydiumClmmAccount")
+                panic!("could not resolve account from data: pubkey({})", pubkey)
             }
         }
     }
@@ -556,7 +556,7 @@ impl AccountDataSerializer for RaydiumOpenBookMarket {
         let (status, nonce, max_order, depth, base_decimal, quote_decimal, state, reset_flag, min_size, vol_max_cut_ratio, amount_wave_ratio, base_lot_size, quote_lot_size, mint_price_multiplier, max_price_multiplier, system_decimal_value, min_separate_numerator, min_separate_denominator, trade_fee_numerator, trade_fee_denominator, pnl_numerator, pnl_denominator, swap_fee_numerator, swap_fee_denominator, base_need_take_pnl, quote_need_take_pnl, quote_total_pnl, base_total_pnl, pool_open_time, punish_pc_amount, punish_coin_amount, orderbook_to_init_time, swap_base_in_amount, swap_quote_out_amount, swap_base2_quote_fee, swap_quote_in_amount, swap_base_out_amount, swap_quote2_base_fee, base_vault, quote_vault, base_mint, quote_mint, lp_mint, open_orders, market_id, market_program_id, target_orders, withdraw_queue, lp_vault, owner, lp_reserve, padding) =
             array_refs![src, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 16, 16, 8, 16, 16, 8, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 8, 24];
 
-        let padding_array: Vec<u64> = padding.chunks_exact(3).map(|array| {
+        let padding_array: Vec<u64> = padding.chunks_exact(8).map(|array| {
             u64::from_le_bytes(array.try_into().unwrap())
         }).collect::<Vec<u64>>();
 

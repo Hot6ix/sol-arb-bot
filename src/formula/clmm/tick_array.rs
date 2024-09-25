@@ -91,7 +91,7 @@ impl TickState {
     fn unpack_data_set(data: [u8; 10080]) -> [TickState; 60] {
         let mut vec: Vec<TickState> = Vec::new();
 
-        data.chunks_exact(60).for_each(|array| {
+        data.chunks_exact(168).for_each(|array| {
             vec.push(TickState::unpack_data(&array.to_vec()))
         });
 
@@ -101,7 +101,7 @@ impl TickState {
     fn unpack_padding(data: [u8; 52]) -> [u32; 13] {
         let mut vec: Vec<u32> = Vec::new();
 
-        data.chunks_exact(13).for_each(|array| {
+        data.chunks_exact(4).for_each(|array| {
             vec.push(u32::from_le_bytes(array.try_into().unwrap()))
         });
 
@@ -141,9 +141,9 @@ impl Default for TickArrayState {
 
 impl AccountDataSerializer for TickArrayState {
     fn unpack_data(data: &Vec<u8>) -> Self {
-        let src = array_ref![data, 0, 10232];
-        let (pool_id, start_tick_index, ticks, initialized_tick_count, recent_epoch, padding) =
-            array_refs![src, 32, 4, 10080, 1, 8, 107];
+        let src = array_ref![data, 0, 10240];
+        let (discriminator, pool_id, start_tick_index, ticks, initialized_tick_count, recent_epoch, padding) =
+            array_refs![src, 8, 32, 4, 10080, 1, 8, 107];
 
         TickArrayState {
             pool_id: Pubkey::new_from_array(*pool_id),
@@ -277,9 +277,9 @@ pub struct TickArrayBitmapExtension {
 
 impl AccountDataSerializer for TickArrayBitmapExtension {
     fn unpack_data(data: &Vec<u8>) -> Self {
-        let src = array_ref![data, 0, 1824];
-        let (pool_id, positive_tick_array_bitmap, negative_tick_array_bitmap) =
-            array_refs![src, 32, 896, 896];
+        let src = array_ref![data, 0, 1832];
+        let (discriminator, pool_id, positive_tick_array_bitmap, negative_tick_array_bitmap) =
+            array_refs![src, 8, 32, 896, 896];
 
         TickArrayBitmapExtension {
             pool_id: Pubkey::new_from_array(*pool_id),
@@ -412,7 +412,7 @@ impl TickArrayBitmapExtension {
     fn unpack_tick_array_bitmap(data: [u8; 896]) -> [[u64; 8]; 14]{
         // negative_tick_array_bitmap: [[0u64;8]; 14],
         let mut vec: Vec<[u64; 8]> = Vec::new();
-        data.chunks_exact(14).for_each(|tick| {
+        data.chunks_exact(64).for_each(|tick| {
             let mut tick_vec: Vec<u64> = Vec::new();
 
             tick.chunks(8).for_each(|tick_value| {
