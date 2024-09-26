@@ -112,13 +112,14 @@ pub fn get_next_sqrt_price_from_amount_1_rounding_down(
 
 #[cfg(test)]
 mod test {
+    use crate::formula::clmm::constant::{MAX_SQRT_PRICE_X64, MIN_SQRT_PRICE_X64};
     use crate::formula::clmm::sqrt_price_math::{price_to_sqrt_price_x64, sqrt_price_x64_to_price, sqrt_price_x64_to_tick, tick_to_sqrt_price_x64};
 
     #[test]
     fn test_tick_to_sqrt_price_x64() {
         let tick = -18867i32;
         let sqrt_price_x64 = tick_to_sqrt_price_x64(&tick);
-        println!("{}", sqrt_price_x64.unwrap())
+        println!("{}", sqrt_price_x64.unwrap());
     }
 
     #[test]
@@ -128,7 +129,9 @@ mod test {
             7174399016327223095,
             7174386368720733565,
             7174388168782077692,
-            7174954712407921105
+            7174954712407921105,
+            MAX_SQRT_PRICE_X64,
+            MIN_SQRT_PRICE_X64
         ];
 
         let ticks: Vec<i32> = vec![
@@ -136,7 +139,9 @@ mod test {
             -18889,
             -18889,
             -18889,
-            -18887
+            -18887,
+            443636,
+            -443636
         ];
 
         sqrt_price_x64.iter().enumerate().for_each(|(index, p)| {

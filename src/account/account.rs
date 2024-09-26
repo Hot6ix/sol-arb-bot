@@ -144,7 +144,7 @@ impl DeserializedPoolAccount {
                         ).expect("failed to get current_tick_array_state");
                         vec.push((DeserializedAccount::ConfigAccount(DeserializedConfigAccount::RaydiumClmmConfigAccount(RaydiumClmmAccount::TickArrayState(TickArrayStateAccount::default()))), current_tick_array_state));
 
-                        for _ in 0..5 {
+                        for _ in 0..3 {
                             let next_tick_array_index = market.next_initialized_tick_array_start_index(
                                 &Some(&tick_array_bitmap_extension),
                                 current_valid_tick_array_start_index,

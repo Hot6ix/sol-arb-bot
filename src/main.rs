@@ -57,7 +57,7 @@ async fn main() {
     // hold pool pubkey
     let pool_account_bin: Arc<Mutex<Vec<DeserializedPoolAccount>>> = Arc::new(Mutex::new(Vec::new()));
     // hold pubkey in data or pda
-    let shared_pool_account_bin: Arc<Mutex<Vec<DeserializedAccount>>> = Arc::new(Mutex::new(Vec::new()));
+    let shared_account_bin: Arc<Mutex<Vec<DeserializedAccount>>> = Arc::new(Mutex::new(Vec::new()));
     // hold available path list of mint
     let path_list: Arc<Mutex<HashMap<Pubkey, Vec<DeserializedPoolAccount>>>> = Arc::new(Mutex::new(HashMap::new()));
 
@@ -80,12 +80,12 @@ async fn main() {
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // collect swap-related pubkeys from pool accounts
-    probe.start_watching(Arc::clone(&pool_account_bin), Arc::clone(&shared_pool_account_bin));
+    probe.start_watching(Arc::clone(&pool_account_bin), Arc::clone(&shared_account_bin));
     probe.publisher.lock().unwrap().subscribe(Event::UpdateAccounts, || {
         println!("updated")
     });
 
-    let shared_pool_account_bin = Arc::clone(&shared_pool_account_bin);
+    let shared_pool_account_bin = Arc::clone(&shared_account_bin);
     let path_list = Arc::clone(&path_list);
     spawn(async move {
         loop {

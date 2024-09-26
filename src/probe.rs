@@ -152,6 +152,7 @@ impl Probe {
             }
         }).collect::<Vec<DeserializedAccount>>();
 
+        // todo
         *bin.lock().unwrap() = fetched_accounts;
         if let Some(publisher) = publisher {
             publisher.lock().unwrap().notify(Event::UpdateAccounts);

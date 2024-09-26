@@ -1,8 +1,12 @@
 use std::mem::swap;
 use num_bigfloat::BigFloat;
-use numext_fixed_uint::U128;
 use crate::formula::clmm::constant::{BIT_PRECISION};
 use crate::formula::clmm::sqrt_price_math::{Q64, tick_to_sqrt_price_x64};
+
+/*
+    For Raydium Concentrated Liquidity pool
+ */
+
 
 #[derive(Debug)]
 pub struct SwapState {
@@ -10,19 +14,11 @@ pub struct SwapState {
     pub amount_calculated: u128,
     pub sqrt_price_x64: u128,
     pub tick: i32,
-    pub fee_growth_global_x64: u128,
+    // pub fee_growth_global_x64: u128,
     pub fee_amount: u128,
     pub protocol_fee: u128,
     pub fund_fee: u128,
     pub liquidity: u128,
-}
-
-#[derive(Default, Debug)]
-pub struct SwapStep {
-    pub sqrt_price_next_x64: u128,
-    pub amount_in: u128,
-    pub amount_out: u128,
-    pub fee_amount: u128,
 }
 
 #[derive(Default)]

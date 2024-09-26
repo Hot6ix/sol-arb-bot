@@ -1,11 +1,9 @@
 use std::collections::VecDeque;
-use std::ops::{Mul, Neg};
-use num_bigfloat::BigFloat;
-use num_traits::Zero;
-use numext_fixed_uint::U128;
-use crate::formula::clmm::constant::{FEE_RATE_DENOMINATOR_VALUE, MAX_SQRT_PRICE_X64, MAX_TICK, MIN_SQRT_PRICE_X64, MIN_TICK};
-use crate::formula::clmm::sqrt_price_math::{get_next_sqrt_price_from_input, get_next_sqrt_price_from_output, Q64, tick_to_sqrt_price_x64};
-use crate::formula::clmm::swap_state::{add_delta, calculate_amount_in_range, get_delta_amount_0_unsigned, get_delta_amount_1_unsigned, get_tick_at_sqrt_price, StepComputations, SwapState, SwapStep};
+use std::ops::Neg;
+use crate::formula::clmm::concentrated_liquidity::compute_swap_step;
+use crate::formula::clmm::constant::{MAX_SQRT_PRICE_X64, MAX_TICK, MIN_SQRT_PRICE_X64, MIN_TICK};
+use crate::formula::clmm::sqrt_price_math::tick_to_sqrt_price_x64;
+use crate::formula::clmm::raydium_swap_state::{add_delta, get_tick_at_sqrt_price, StepComputations, SwapState};
 use crate::formula::clmm::tick_array::{TickArrayBitmapExtension, TickArrayState, TickState};
 use crate::r#struct::pools::{AmmConfig, RaydiumClmmMarket};
 
@@ -19,7 +17,7 @@ pub fn swap_internal(
     zero_for_one: bool,
     is_base_input: bool,
 ) -> Result<(u64, u64), &'static str> {
-    if amount_specified.is_zero() {
+    if amount_specified == 0u128 {
         return Err("Zero amount specified")
     }
 
@@ -56,11 +54,11 @@ pub fn swap_internal(
         amount_calculated: 0,
         sqrt_price_x64: pool_state.sqrt_price_x64,
         tick: pool_state.tick_current,
-        fee_growth_global_x64: if zero_for_one {
-            pool_state.fee_growth_global_0_x64
-        } else {
-            pool_state.fee_growth_global_1_x64
-        },
+        // fee_growth_global_x64: if zero_for_one {
+        //     pool_state.fee_growth_global_0_x64
+        // } else {
+        //     pool_state.fee_growth_global_1_x64
+        // },
         fee_amount: 0,
         protocol_fee: 0,
         fund_fee: 0,
@@ -353,122 +351,4 @@ pub fn swap_internal(
     // }
 
     Ok((amount_0 as u64, amount_1 as u64))
-}
-
-pub fn compute_swap_step(
-    sqrt_price_current_x64: u128,
-    sqrt_price_target_x64: u128,
-    liquidity: u128,
-    amount_remaining: u128,
-    fee_rate: u128,
-    is_base_input: bool,
-    zero_for_one: bool,
-) -> Result<SwapStep, &'static str> {
-    let mut swap_step = SwapStep::default();
-
-    let fee_rate_bf = BigFloat::from(fee_rate);
-    let fee_rate_denominator_bf = BigFloat::from(FEE_RATE_DENOMINATOR_VALUE);
-
-    if is_base_input {
-        let amount_remaining_less_fee = BigFloat::from(amount_remaining).mul(fee_rate_denominator_bf.sub(&fee_rate_bf)).div(&fee_rate_denominator_bf).floor().to_u128().unwrap();
-
-        let amount_in = calculate_amount_in_range(
-            sqrt_price_current_x64,
-            sqrt_price_target_x64,
-            liquidity,
-            zero_for_one,
-            is_base_input
-        );
-
-        swap_step.amount_in = amount_in;
-        swap_step.sqrt_price_next_x64 =
-            if amount_remaining_less_fee >= swap_step.amount_in {
-                sqrt_price_target_x64
-            }
-            else {
-                get_next_sqrt_price_from_input(
-                    sqrt_price_current_x64,
-                    liquidity,
-                    amount_remaining_less_fee,
-                    zero_for_one
-                )
-            }
-    }
-    else {
-        let amount_out = calculate_amount_in_range(
-            sqrt_price_current_x64,
-            sqrt_price_target_x64,
-            liquidity,
-            zero_for_one,
-            is_base_input
-        );
-
-        swap_step.amount_out = amount_out;
-        swap_step.sqrt_price_next_x64 =
-            if amount_remaining >= swap_step.amount_out {
-                sqrt_price_target_x64
-            }
-            else {
-                get_next_sqrt_price_from_output(
-                    sqrt_price_current_x64,
-                    liquidity,
-                    amount_remaining,
-                    zero_for_one
-                )
-            }
-    }
-
-    let is_exceed = sqrt_price_target_x64 == swap_step.sqrt_price_next_x64;
-    if zero_for_one {
-        if !(is_exceed && is_base_input) {
-            swap_step.amount_in = get_delta_amount_0_unsigned(
-                swap_step.sqrt_price_next_x64,
-                sqrt_price_current_x64,
-                liquidity,
-                true
-            );
-        }
-        if !(is_exceed && !is_base_input) {
-            swap_step.amount_out = get_delta_amount_1_unsigned(
-                swap_step.sqrt_price_next_x64,
-                sqrt_price_current_x64,
-                liquidity,
-                false
-            );
-        }
-    }
-    else {
-        if !(is_exceed && is_base_input) {
-            swap_step.amount_in = get_delta_amount_1_unsigned(
-                sqrt_price_current_x64,
-                swap_step.sqrt_price_next_x64,
-                liquidity,
-                true
-            );
-        }
-
-        if !(is_exceed && !is_base_input) {
-            swap_step.amount_out = get_delta_amount_0_unsigned(
-                sqrt_price_current_x64,
-                swap_step.sqrt_price_next_x64,
-                liquidity,
-                false
-            );
-        }
-    }
-
-    if !is_base_input && swap_step.amount_out > amount_remaining {
-        swap_step.amount_out = amount_remaining;
-    }
-
-    swap_step.fee_amount =
-        if is_base_input && swap_step.sqrt_price_next_x64 != sqrt_price_target_x64 {
-            amount_remaining - swap_step.amount_in
-        }
-        else {
-            // swap_step.amount_in * fee_rate / (fee_rate_denominator - fee_rate)
-            BigFloat::from(swap_step.amount_in).mul(&fee_rate_bf).div(&fee_rate_denominator_bf.sub(&fee_rate_bf)).ceil().to_u128().unwrap()
-        };
-
-    Ok(swap_step)
 }

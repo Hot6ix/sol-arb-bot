@@ -133,6 +133,10 @@ impl WhirlpoolRewardInfo {
             Self::unpack_data(&Vec::from(third))
         ]
     }
+
+    pub fn initialized(&self) -> bool {
+        self.mint.ne(&Pubkey::default())
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -183,6 +187,106 @@ impl OrcaClmmAccount {
         match self {
             OrcaClmmAccount::WhirlpoolsConfig(account) => {
                 account.market
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+pub mod whirlpool_builder {
+    use crate::formula::clmm::orca_swap_state::NUM_REWARDS;
+    use super::{OrcaClmmMarket, WhirlpoolRewardInfo};
+
+    #[derive(Default)]
+    pub struct WhirlpoolBuilder {
+        liquidity: u128,
+        tick_spacing: u16,
+        tick_current_index: i32,
+        sqrt_price: u128,
+        fee_rate: u16,
+        protocol_fee_rate: u16,
+        fee_growth_global_a: u128,
+        fee_growth_global_b: u128,
+        reward_last_updated_timestamp: u64,
+        reward_infos: [WhirlpoolRewardInfo; NUM_REWARDS],
+    }
+
+    impl WhirlpoolBuilder {
+        pub fn new() -> Self {
+            Self {
+                reward_infos: [WhirlpoolRewardInfo::default(); NUM_REWARDS],
+                ..Default::default()
+            }
+        }
+
+        pub fn liquidity(mut self, liquidity: u128) -> Self {
+            self.liquidity = liquidity;
+            self
+        }
+
+        pub fn reward_last_updated_timestamp(mut self, reward_last_updated_timestamp: u64) -> Self {
+            self.reward_last_updated_timestamp = reward_last_updated_timestamp;
+            self
+        }
+
+        pub fn reward_info(mut self, index: usize, reward_info: WhirlpoolRewardInfo) -> Self {
+            self.reward_infos[index] = reward_info;
+            self
+        }
+
+        pub fn reward_infos(mut self, reward_infos: [WhirlpoolRewardInfo; NUM_REWARDS]) -> Self {
+            self.reward_infos = reward_infos;
+            self
+        }
+
+        pub fn tick_spacing(mut self, tick_spacing: u16) -> Self {
+            self.tick_spacing = tick_spacing;
+            self
+        }
+
+        pub fn tick_current_index(mut self, tick_current_index: i32) -> Self {
+            self.tick_current_index = tick_current_index;
+            self
+        }
+
+        pub fn sqrt_price(mut self, sqrt_price: u128) -> Self {
+            self.sqrt_price = sqrt_price;
+            self
+        }
+
+        pub fn fee_growth_global_a(mut self, fee_growth_global_a: u128) -> Self {
+            self.fee_growth_global_a = fee_growth_global_a;
+            self
+        }
+
+        pub fn fee_growth_global_b(mut self, fee_growth_global_b: u128) -> Self {
+            self.fee_growth_global_b = fee_growth_global_b;
+            self
+        }
+
+        pub fn fee_rate(mut self, fee_rate: u16) -> Self {
+            self.fee_rate = fee_rate;
+            self
+        }
+
+        pub fn protocol_fee_rate(mut self, protocol_fee_rate: u16) -> Self {
+            self.protocol_fee_rate = protocol_fee_rate;
+            self
+        }
+
+        pub fn build(self) -> OrcaClmmMarket {
+            OrcaClmmMarket {
+                liquidity: self.liquidity,
+                reward_last_updated_timestamp: self.reward_last_updated_timestamp,
+                reward_infos: self.reward_infos,
+                tick_current_index: self.tick_current_index,
+                sqrt_price: self.sqrt_price,
+                tick_spacing: self.tick_spacing,
+                fee_growth_global_a: self.fee_growth_global_a,
+                fee_growth_global_b: self.fee_growth_global_b,
+                fee_rate: self.fee_rate,
+                protocol_fee_rate: self.protocol_fee_rate,
+                ..Default::default()
             }
         }
     }

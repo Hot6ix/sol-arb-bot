@@ -15,8 +15,8 @@ use crate::formula::base::Formula;
 use crate::formula::base::Formula::{ConcentratedLiquidity, ConstantProduct};
 use crate::formula::clmm::constant::{MAX_TICK, MIN_TICK, POOL_SEED};
 use crate::formula::clmm::tick_array::{check_current_tick_array_is_initialized, max_tick_in_tick_array_bitmap, next_initialized_tick_array_start_index, TickArrayBitmapExtension, TickArrayBitmapExtensionAccount, TickArrayState, TickArrayStateAccount};
-use crate::formula::concentrated_liquidity::swap_internal;
 use crate::formula::constant_product::{ConstantProductBase, DefaultConstantProduct};
+use crate::formula::raydium_clmm::swap_internal;
 use crate::r#struct::market::{Market, PoolOperation};
 use crate::utils::PubkeyPair;
 
