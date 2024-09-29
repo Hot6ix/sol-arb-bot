@@ -4,7 +4,7 @@ use num_bigfloat::BigFloat;
 use num_traits::Zero;
 
 use crate::formula::clmm::constant::FEE_RATE_DENOMINATOR_VALUE;
-use crate::formula::clmm::sqrt_price_math::{get_next_sqrt_price_from_input, get_next_sqrt_price_from_output};
+use crate::formula::clmm::raydium_sqrt_price_math::{get_next_sqrt_price_from_input, get_next_sqrt_price_from_output};
 use crate::formula::clmm::raydium_swap_state::{calculate_amount_in_range, get_delta_amount_0_unsigned, get_delta_amount_1_unsigned};
 
 pub fn compute_swap_step(

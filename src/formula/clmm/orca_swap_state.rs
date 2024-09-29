@@ -64,7 +64,7 @@ impl SwapTickSequence {
         let array = self.arrays.get(array_index);
         match array {
             Some(array) => array.get_tick(tick_index, tick_spacing),
-            _ => Err("ErrorCode::TickArrayIndexOutofBounds"),
+            _ => Err("ErrorCode::TickArrayIndexOutOfBounds"),
         }
     }
 
@@ -81,7 +81,7 @@ impl SwapTickSequence {
                 array.update_tick(tick_index, tick_spacing, update)?;
                 Ok(())
             }
-            _ => Err("ErrorCode::TickArrayIndexOutofBounds.into()"),
+            _ => Err("ErrorCode::TickArrayIndexOutOfBounds.into()"),
         }
     }
 
@@ -551,7 +551,7 @@ pub fn checked_mul_div_round_up_if(
     Ok(if round_up && p % d > 0 { n + 1 } else { n })
 }
 
-#[cfg(test)]
+// #[cfg(test)]
 pub mod tick_builder {
     use super::{NUM_REWARDS, Tick};
 

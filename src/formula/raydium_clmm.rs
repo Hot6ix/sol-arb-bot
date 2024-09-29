@@ -1,10 +1,13 @@
 use std::collections::VecDeque;
 use std::ops::Neg;
+use num_bigfloat::BigFloat;
 use crate::formula::clmm::concentrated_liquidity::compute_swap_step;
-use crate::formula::clmm::constant::{MAX_SQRT_PRICE_X64, MAX_TICK, MIN_SQRT_PRICE_X64, MIN_TICK};
-use crate::formula::clmm::sqrt_price_math::tick_to_sqrt_price_x64;
-use crate::formula::clmm::raydium_swap_state::{add_delta, get_tick_at_sqrt_price, StepComputations, SwapState};
-use crate::formula::clmm::tick_array::{TickArrayBitmapExtension, TickArrayState, TickState};
+use crate::formula::clmm::constant::{FEE_RATE_DENOMINATOR_VALUE, MAX_SQRT_PRICE_X64, MAX_TICK, MIN_SQRT_PRICE_X64, MIN_TICK};
+use crate::formula::clmm::raydium_sqrt_price_math::Q64;
+use crate::formula::clmm::raydium_swap_state::{add_delta, StepComputations, SwapState};
+use crate::formula::clmm::raydium_tick_array::{TickArrayBitmapExtension, TickArrayState, TickState};
+use crate::formula::clmm::raydium_tick_math::{get_sqrt_price_at_tick, get_tick_at_sqrt_price};
+use crate::formula::clmm::u256_math::U128;
 use crate::r#struct::pools::{AmmConfig, RaydiumClmmMarket};
 
 pub fn swap_internal(
@@ -135,9 +138,7 @@ pub fn swap_internal(
         } else if step.tick_next > MAX_TICK {
             step.tick_next = MAX_TICK;
         }
-        // todo
-        // step.sqrt_price_next_x64 = get_sqrt_price_at_tick(step.tick_next)?;
-        step.sqrt_price_next_x64 = tick_to_sqrt_price_x64(&step.tick_next).ok_or("tick_to_sqrt_price_x64 failed")?;
+        step.sqrt_price_next_x64 = get_sqrt_price_at_tick(step.tick_next)?;
 
         let target_price = if (zero_for_one && step.sqrt_price_next_x64 < sqrt_price_limit_x64)
             || (!zero_for_one && step.sqrt_price_next_x64 > sqrt_price_limit_x64)
@@ -197,59 +198,63 @@ pub fn swap_internal(
                 .expect("calculate overflow");
         }
 
-        // let step_fee_amount = step.fee_amount;
-        //
-        // if amm_config.protocol_fee_rate > 0 {
-        //     let delta = U128::from(step_fee_amount)
-        //         .checked_mul(&U128::from(amm_config.protocol_fee_rate))
-        //         .unwrap()
-        //         .checked_div(&U128::from(FEE_RATE_DENOMINATOR_VALUE))
-        //         .unwrap()
-        //         .to_le_bytes();
-        //     step.fee_amount = step.fee_amount.checked_sub(u128::from_le_bytes(delta)).unwrap();
-        //     state.protocol_fee = state.protocol_fee.checked_add(u128::from_le_bytes(delta)).unwrap();
-        // }
-        //
-        // if amm_config.fund_fee_rate > 0 {
-        //     let delta = U128::from(step_fee_amount)
-        //         .checked_mul(&U128::from(amm_config.fund_fee_rate))
-        //         .unwrap()
-        //         .checked_div(&U128::from(FEE_RATE_DENOMINATOR_VALUE))
-        //         .unwrap()
-        //         .to_le_bytes();
-        //     step.fee_amount = step.fee_amount.checked_sub(u128::from_le_bytes(delta)).unwrap();
-        //     state.fund_fee = state.fund_fee.checked_add(u128::from_le_bytes(delta)).unwrap();
-        // }
+        //////////////////// todo: for test only
+        let step_fee_amount = step.fee_amount;
 
-        // if state.liquidity > 0 {
-        //     // todo
-        //     // let fee_growth_global_x64_delta = U128::from(step.fee_amount)
-        //     //     .mul_div_floor(Q64, U128::from(state.liquidity))
-        //     //     .unwrap()
-        //     //     .as_u128();
-        //
-        //     let fee_growth_global_x64_delta = BigFloat::from(step.fee_amount)
-        //         .mul(&BigFloat::from(Q64))
-        //         .div(&BigFloat::from(state.liquidity))
-        //         .floor()
-        //         .to_u128()
-        //         .unwrap();
-        //
-        //     state.fee_growth_global_x64 = state
-        //         .fee_growth_global_x64
-        //         .checked_add(fee_growth_global_x64_delta)
-        //         .unwrap();
-        //     state.fee_amount = state.fee_amount.checked_add(step.fee_amount).unwrap();
-        // }
+        if amm_config.protocol_fee_rate > 0 {
+            let delta = U128::from(step_fee_amount)
+                .checked_mul(U128::from(amm_config.protocol_fee_rate))
+                .unwrap()
+                .checked_div(U128::from(FEE_RATE_DENOMINATOR_VALUE))
+                .unwrap()
+                .to_little_endian();
+            step.fee_amount = step.fee_amount.checked_sub(u128::from_le_bytes(delta)).unwrap();
+            state.protocol_fee = state.protocol_fee.checked_add(u128::from_le_bytes(delta)).unwrap();
+        }
+
+        if amm_config.fund_fee_rate > 0 {
+            let delta = U128::from(step_fee_amount)
+                .checked_mul(U128::from(amm_config.fund_fee_rate))
+                .unwrap()
+                .checked_div(U128::from(FEE_RATE_DENOMINATOR_VALUE))
+                .unwrap()
+                .to_little_endian();
+            step.fee_amount = step.fee_amount.checked_sub(u128::from_le_bytes(delta)).unwrap();
+            state.fund_fee = state.fund_fee.checked_add(u128::from_le_bytes(delta)).unwrap();
+        }
+
+        if state.liquidity > 0 {
+            // todo
+            // let fee_growth_global_x64_delta = U128::from(step.fee_amount)
+            //     .mul_div_floor(Q64, U128::from(state.liquidity))
+            //     .unwrap()
+            //     .as_u128();
+
+            // let fee_growth_global_x64_delta = BigFloat::from(step.fee_amount)
+            //     .mul(&BigFloat::from(Q64))
+            //     .div(&BigFloat::from(state.liquidity))
+            //     .floor()
+            //     .to_u128()
+            //     .unwrap();
+
+            // state.fee_growth_global_x64 = state
+            //     .fee_growth_global_x64
+            //     .checked_add(fee_growth_global_x64_delta)
+            //     .unwrap();
+            state.fee_amount = state.fee_amount.checked_add(step.fee_amount).unwrap();
+        }
+        //////////////////// todo: for test only
 
         if state.sqrt_price_x64 == step.sqrt_price_next_x64 {
             if step.initialized {
                 let mut liquidity_net = next_initialized_tick.liquidity_net;
-                // tick_array_current.update_tick_state(
-                //     next_initialized_tick.tick,
-                //     pool_state.tick_spacing.into(),
-                //     *next_initialized_tick,
-                // )?;
+                //////////////////// todo: for test only
+                tick_array_current.update_tick_state(
+                    next_initialized_tick.tick,
+                    pool_state.tick_spacing.into(),
+                    *next_initialized_tick,
+                )?;
+                //////////////////// todo: for test only
 
                 if zero_for_one {
                     liquidity_net = liquidity_net.neg();
@@ -268,15 +273,17 @@ pub fn swap_internal(
     }
     /////////////////////////////////////// end of while loop
 
-    // if state.tick != pool_state.tick_current {
-    //     pool_state.tick_current = state.tick;
-    // }
-    //
-    // pool_state.sqrt_price_x64 = state.sqrt_price_x64;
-    //
-    // if liquidity_start != state.liquidity {
-    //     pool_state.liquidity = state.liquidity;
-    // }
+    //////////////////// todo: for test only
+    if state.tick != pool_state.tick_current {
+        pool_state.tick_current = state.tick;
+    }
+
+    pool_state.sqrt_price_x64 = state.sqrt_price_x64;
+
+    if liquidity_start != state.liquidity {
+        pool_state.liquidity = state.liquidity;
+    }
+    //////////////////// todo: for test only
 
     let (amount_0, amount_1) = if zero_for_one == is_base_input {
         (
@@ -294,61 +301,63 @@ pub fn swap_internal(
         )
     };
 
-    // if zero_for_one {
-    //     pool_state.fee_growth_global_0_x64 = state.fee_growth_global_x64;
-    //     pool_state.total_fees_token_0 = pool_state
-    //         .total_fees_token_0
-    //         .checked_add(state.fee_amount as u64)
-    //         .unwrap();
-    //
-    //     if state.protocol_fee > 0 {
-    //         pool_state.protocol_fees_token_0 = pool_state
-    //             .protocol_fees_token_0
-    //             .checked_add(state.protocol_fee as u64)
-    //             .unwrap();
-    //     }
-    //     if state.fund_fee > 0 {
-    //         pool_state.fund_fees_token_0 = pool_state
-    //             .fund_fees_token_0
-    //             .checked_add(state.fund_fee as u64)
-    //             .unwrap();
-    //     }
-    //     pool_state.swap_in_amount_token_0 = pool_state
-    //         .swap_in_amount_token_0
-    //         .checked_add(u128::from(amount_0))
-    //         .unwrap();
-    //     pool_state.swap_out_amount_token_1 = pool_state
-    //         .swap_out_amount_token_1
-    //         .checked_add(u128::from(amount_1))
-    //         .unwrap();
-    // } else {
-    //     pool_state.fee_growth_global_1_x64 = state.fee_growth_global_x64;
-    //     pool_state.total_fees_token_1 = pool_state
-    //         .total_fees_token_1
-    //         .checked_add(state.fee_amount as u64)
-    //         .unwrap();
-    //
-    //     if state.protocol_fee > 0 {
-    //         pool_state.protocol_fees_token_1 = pool_state
-    //             .protocol_fees_token_1
-    //             .checked_add(state.protocol_fee as u64)
-    //             .unwrap();
-    //     }
-    //     if state.fund_fee > 0 {
-    //         pool_state.fund_fees_token_1 = pool_state
-    //             .fund_fees_token_1
-    //             .checked_add(state.fund_fee as u64)
-    //             .unwrap();
-    //     }
-    //     pool_state.swap_in_amount_token_1 = pool_state
-    //         .swap_in_amount_token_1
-    //         .checked_add(u128::from(amount_1))
-    //         .unwrap();
-    //     pool_state.swap_out_amount_token_0 = pool_state
-    //         .swap_out_amount_token_0
-    //         .checked_add(u128::from(amount_0))
-    //         .unwrap();
-    // }
+    //////////////////// todo: for test only
+    if zero_for_one {
+        // pool_state.fee_growth_global_0_x64 = state.fee_growth_global_x64;
+        pool_state.total_fees_token_0 = pool_state
+            .total_fees_token_0
+            .checked_add(state.fee_amount as u64)
+            .unwrap();
+
+        if state.protocol_fee > 0 {
+            pool_state.protocol_fees_token_0 = pool_state
+                .protocol_fees_token_0
+                .checked_add(state.protocol_fee as u64)
+                .unwrap();
+        }
+        if state.fund_fee > 0 {
+            pool_state.fund_fees_token_0 = pool_state
+                .fund_fees_token_0
+                .checked_add(state.fund_fee as u64)
+                .unwrap();
+        }
+        pool_state.swap_in_amount_token_0 = pool_state
+            .swap_in_amount_token_0
+            .checked_add(u128::from(amount_0))
+            .unwrap();
+        pool_state.swap_out_amount_token_1 = pool_state
+            .swap_out_amount_token_1
+            .checked_add(u128::from(amount_1))
+            .unwrap();
+    } else {
+        // pool_state.fee_growth_global_1_x64 = state.fee_growth_global_x64;
+        pool_state.total_fees_token_1 = pool_state
+            .total_fees_token_1
+            .checked_add(state.fee_amount as u64)
+            .unwrap();
+
+        if state.protocol_fee > 0 {
+            pool_state.protocol_fees_token_1 = pool_state
+                .protocol_fees_token_1
+                .checked_add(state.protocol_fee as u64)
+                .unwrap();
+        }
+        if state.fund_fee > 0 {
+            pool_state.fund_fees_token_1 = pool_state
+                .fund_fees_token_1
+                .checked_add(state.fund_fee as u64)
+                .unwrap();
+        }
+        pool_state.swap_in_amount_token_1 = pool_state
+            .swap_in_amount_token_1
+            .checked_add(u128::from(amount_1))
+            .unwrap();
+        pool_state.swap_out_amount_token_0 = pool_state
+            .swap_out_amount_token_0
+            .checked_add(u128::from(amount_0))
+            .unwrap();
+    }
+    //////////////////// todo: for test only
 
     Ok((amount_0 as u64, amount_1 as u64))
 }

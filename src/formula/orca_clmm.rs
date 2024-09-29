@@ -1,8 +1,8 @@
 use crate::formula::clmm::concentrated_liquidity::compute_swap_step;
 use crate::formula::clmm::constant::{MAX_SQRT_PRICE_X64, MIN_SQRT_PRICE_X64};
 use crate::formula::clmm::orca_swap_state::{checked_mul_div, next_tick_cross_update, NO_EXPLICIT_SQRT_PRICE_LIMIT, NUM_REWARDS, PostSwapUpdate, PROTOCOL_FEE_RATE_MUL_VALUE, Q64_RESOLUTION, SwapTickSequence, Tick, TICK_ARRAY_SIZE, TickUpdate};
+use crate::formula::clmm::orca_tick_math::{sqrt_price_from_tick_index, tick_index_from_sqrt_price};
 use crate::formula::clmm::raydium_swap_state::add_delta;
-use crate::formula::clmm::sqrt_price_math::{sqrt_price_x64_to_tick, tick_to_sqrt_price_x64};
 use crate::r#struct::pools::{OrcaClmmMarket, WhirlpoolRewardInfo};
 
 pub fn swap_internal(
@@ -169,8 +169,7 @@ pub fn swap_internal(
                 next_tick_index
             };
         } else if swap_computation.sqrt_price_next_x64 != curr_sqrt_price {
-            // curr_tick_index = tick_index_from_sqrt_price(&swap_computation.sqrt_price_next_x64);
-            curr_tick_index = sqrt_price_x64_to_tick(&swap_computation.sqrt_price_next_x64).unwrap();
+            curr_tick_index = tick_index_from_sqrt_price(&swap_computation.sqrt_price_next_x64);
         }
 
         curr_sqrt_price = swap_computation.sqrt_price_next_x64;
@@ -203,8 +202,7 @@ fn get_next_sqrt_prices(
     sqrt_price_limit: u128,
     a_to_b: bool,
 ) -> (u128, u128) {
-    // let next_tick_price = sqrt_price_from_tick_index(next_tick_index);
-    let next_tick_price = tick_to_sqrt_price_x64(&next_tick_index).unwrap();
+    let next_tick_price = sqrt_price_from_tick_index(next_tick_index);
     let next_sqrt_price_limit = if a_to_b {
         sqrt_price_limit.max(next_tick_price)
     } else {
@@ -305,7 +303,7 @@ pub fn next_whirlpool_reward_infos(
 #[cfg(test)]
 mod swap_test {
     use crate::formula::clmm::orca_swap_state::SwapTickSequence;
-    use crate::formula::clmm::sqrt_price_math::tick_to_sqrt_price_x64;
+    use crate::formula::clmm::orca_tick_math::sqrt_price_from_tick_index;
     use crate::formula::clmm::test::liquidity_test_fixture::create_whirlpool_reward_infos;
     use crate::formula::clmm::test::swap_test_fixture::{assert_swap, assert_swap_tick_state, SwapTestExpectation, SwapTestFixture, SwapTestFixtureInfo, TestTickInfo, TickExpectation, TS_8};
 
@@ -317,8 +315,7 @@ mod swap_test {
             curr_tick_index: 255,
             start_tick_index: 0,
             trade_amount: 100_000,
-            // sqrt_price_limit: sqrt_price_from_tick_index(1720),
-            sqrt_price_limit: tick_to_sqrt_price_x64(&1720i32).unwrap(),
+            sqrt_price_limit: sqrt_price_from_tick_index(1720),
             amount_specified_is_input: false,
             a_to_b: false,
             array_1_ticks: &vec![TestTickInfo {

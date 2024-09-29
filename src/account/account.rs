@@ -4,7 +4,7 @@ use solana_sdk::pubkey::Pubkey;
 use crate::formula::base::Formula;
 
 use crate::formula::clmm::constant::TICK_ARRAY_SEED;
-use crate::formula::clmm::tick_array::{TickArrayBitmapExtension, TickArrayBitmapExtensionAccount, TickArrayState, TickArrayStateAccount};
+use crate::formula::clmm::raydium_tick_array::{TickArrayBitmapExtension, TickArrayBitmapExtensionAccount, TickArrayState, TickArrayStateAccount};
 use crate::r#struct::market::{Market, PoolOperation};
 use crate::r#struct::pools::{OrcaClmmAccount, RaydiumClmmAccount, RaydiumClmmMarket};
 use crate::r#struct::token::TokenAccount;

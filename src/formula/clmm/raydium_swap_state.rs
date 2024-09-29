@@ -1,8 +1,10 @@
 use std::mem::swap;
 use num_bigfloat::BigFloat;
 use crate::formula::clmm::constant::{BIT_PRECISION};
-use crate::formula::clmm::sqrt_price_math::{Q64, tick_to_sqrt_price_x64};
-
+use crate::formula::clmm::full_math::MulDiv;
+use crate::formula::clmm::raydium_sqrt_price_math::{Q64, tick_to_sqrt_price_x64};
+use crate::formula::clmm::raydium_tick_math::get_sqrt_price_at_tick;
+use crate::formula::clmm::u256_math::U128;
 /*
     For Raydium Concentrated Liquidity pool
  */
@@ -77,6 +79,80 @@ pub fn calculate_amount_in_range(
     }
 }
 
+pub fn get_liquidity_from_amounts(
+    sqrt_ratio_x64: u128,
+    mut sqrt_ratio_a_x64: u128,
+    mut sqrt_ratio_b_x64: u128,
+    amount_0: u64,
+    amount_1: u64,
+) -> u128 {
+    // sqrt_ratio_a_x64 should hold the smaller value
+    if sqrt_ratio_a_x64 > sqrt_ratio_b_x64 {
+        std::mem::swap(&mut sqrt_ratio_a_x64, &mut sqrt_ratio_b_x64);
+    };
+
+    if sqrt_ratio_x64 <= sqrt_ratio_a_x64 {
+        // If P ≤ P_lower, only token_0 liquidity is active
+        get_liquidity_from_amount_0(sqrt_ratio_a_x64, sqrt_ratio_b_x64, amount_0)
+    } else if sqrt_ratio_x64 < sqrt_ratio_b_x64 {
+        // If P_lower < P < P_upper, active liquidity is the minimum of the liquidity provided
+        // by token_0 and token_1
+        u128::min(
+            get_liquidity_from_amount_0(sqrt_ratio_x64, sqrt_ratio_b_x64, amount_0),
+            get_liquidity_from_amount_1(sqrt_ratio_a_x64, sqrt_ratio_x64, amount_1),
+        )
+    } else {
+        // If P ≥ P_upper, only token_1 liquidity is active
+        get_liquidity_from_amount_1(sqrt_ratio_a_x64, sqrt_ratio_b_x64, amount_1)
+    }
+}
+
+pub fn get_liquidity_from_amount_0(
+    mut sqrt_ratio_a_x64: u128,
+    mut sqrt_ratio_b_x64: u128,
+    amount_0: u64,
+) -> u128 {
+    // sqrt_ratio_a_x64 should hold the smaller value
+    if sqrt_ratio_a_x64 > sqrt_ratio_b_x64 {
+        std::mem::swap(&mut sqrt_ratio_a_x64, &mut sqrt_ratio_b_x64);
+    };
+    let intermediate = U128::from(sqrt_ratio_a_x64)
+        .mul_div_floor(
+            U128::from(sqrt_ratio_b_x64),
+            U128::from(Q64),
+        )
+        .unwrap();
+
+    U128::from(amount_0)
+        .mul_div_floor(
+            intermediate,
+            U128::from(sqrt_ratio_b_x64 - sqrt_ratio_a_x64),
+        )
+        .unwrap()
+        .as_u128()
+}
+
+/// Computes the amount of liquidity received for a given amount of token_1 and price range
+/// Calculates ΔL = Δy / (√P_upper - √P_lower)
+pub fn get_liquidity_from_amount_1(
+    mut sqrt_ratio_a_x64: u128,
+    mut sqrt_ratio_b_x64: u128,
+    amount_1: u64,
+) -> u128 {
+    // sqrt_ratio_a_x64 should hold the smaller value
+    if sqrt_ratio_a_x64 > sqrt_ratio_b_x64 {
+        swap(&mut sqrt_ratio_a_x64, &mut sqrt_ratio_b_x64);
+    };
+
+    U128::from(amount_1)
+        .mul_div_floor(
+            U128::from(Q64),
+            U128::from(sqrt_ratio_b_x64 - sqrt_ratio_a_x64),
+        )
+        .unwrap()
+        .as_u128()
+}
+
 pub fn get_delta_amount_0_unsigned(
     mut sqrt_ratio_a_x64: u128,
     mut sqrt_ratio_b_x64: u128,
@@ -124,144 +200,90 @@ pub fn get_delta_amount_1_unsigned(
     }
 }
 
-pub fn get_tick_at_sqrt_price(sqrt_price_x64: u128) -> Result<i32, &'static str> {
-    let msb: u32 = 128 - sqrt_price_x64.leading_zeros() - 1;
-    let log2p_integer_x32 = (msb as i128 - 64) << 32;
-
-    let mut bit: i128 = 0x8000_0000_0000_0000i128;
-    let mut precision = 0;
-    let mut log2p_fraction_x64 = 0;
-
-    // Log2 iterative approximation for the fractional part
-    // Go through each 2^(j) bit where j < 64 in a Q64.64 number
-    // Append current bit value to fraction result if r^2 Q2.126 is more than 2
-    let mut r = if msb >= 64 {
-        sqrt_price_x64 >> (msb - 63)
+pub fn get_delta_amount_0_signed(
+    sqrt_ratio_a_x64: u128,
+    sqrt_ratio_b_x64: u128,
+    liquidity: i128,
+) -> Result<u128, &'static str> {
+    if liquidity < 0 {
+        Ok(get_delta_amount_0_unsigned(
+            sqrt_ratio_a_x64,
+            sqrt_ratio_b_x64,
+            u128::try_from(-liquidity).unwrap(),
+            false,
+        ))
     } else {
-        sqrt_price_x64 << (63 - msb)
-    };
-
-    while bit > 0 && precision < BIT_PRECISION {
-        r *= r;
-        let is_r_more_than_two = r >> 127 as u32;
-        r >>= 63 + is_r_more_than_two;
-        log2p_fraction_x64 += bit * is_r_more_than_two as i128;
-        bit >>= 1;
-        precision += 1;
+        Ok(get_delta_amount_0_unsigned(
+            sqrt_ratio_a_x64,
+            sqrt_ratio_b_x64,
+            u128::try_from(liquidity).unwrap(),
+            true,
+        ))
     }
-    let log2p_fraction_x32 = log2p_fraction_x64 >> 32;
-    let log2p_x32 = log2p_integer_x32 + log2p_fraction_x32;
-
-    let log_sqrt_10001_x64 = log2p_x32 * 59543866431248i128;
-
-    // tick - 0.01
-    let tick_low = ((log_sqrt_10001_x64 - 184467440737095516i128) >> 64) as i32;
-
-    // tick + (2^-14 / log2(√1.001)) + 0.01
-    let tick_high = ((log_sqrt_10001_x64 + 15793534762490258745i128) >> 64) as i32;
-
-    Ok(if tick_low == tick_high {
-        tick_low
-        //todo
-    // } else if get_sqrt_price_at_tick(tick_high).unwrap() <= sqrt_price_x64 {
-    } else if tick_to_sqrt_price_x64(&tick_high).unwrap() <= sqrt_price_x64 {
-        tick_high
-    } else {
-        tick_low
-    })
 }
 
-// todo
-// pub fn get_sqrt_price_at_tick(tick: i32) -> Result<u128, &'static str> {
-//     let abs_tick = tick.abs() as u32;
-//
-//     // i = 0
-//     let mut ratio = if abs_tick & 0x1 != 0 {
-//         U128([0xfffcb933bd6fb800, 0])
-//     } else {
-//         // 2^64
-//         U128([0, 1])
-//     };
-//     // i = 1
-//     if abs_tick & 0x2 != 0 {
-//         ratio = (ratio * U128([0xfff97272373d4000, 0])) >> NUM_64
-//     };
-//     // i = 2
-//     if abs_tick & 0x4 != 0 {
-//         ratio = (ratio * U128([0xfff2e50f5f657000, 0])) >> NUM_64
-//     };
-//     // i = 3
-//     if abs_tick & 0x8 != 0 {
-//         ratio = (ratio * U128([0xffe5caca7e10f000, 0])) >> NUM_64
-//     };
-//     // i = 4
-//     if abs_tick & 0x10 != 0 {
-//         ratio = (ratio * U128([0xffcb9843d60f7000, 0])) >> NUM_64
-//     };
-//     // i = 5
-//     if abs_tick & 0x20 != 0 {
-//         ratio = (ratio * U128([0xff973b41fa98e800, 0])) >> NUM_64
-//     };
-//     // i = 6
-//     if abs_tick & 0x40 != 0 {
-//         ratio = (ratio * U128([0xff2ea16466c9b000, 0])) >> NUM_64
-//     };
-//     // i = 7
-//     if abs_tick & 0x80 != 0 {
-//         ratio = (ratio * U128([0xfe5dee046a9a3800, 0])) >> NUM_64
-//     };
-//     // i = 8
-//     if abs_tick & 0x100 != 0 {
-//         ratio = (ratio * U128([0xfcbe86c7900bb000, 0])) >> NUM_64
-//     };
-//     // i = 9
-//     if abs_tick & 0x200 != 0 {
-//         ratio = (ratio * U128([0xf987a7253ac65800, 0])) >> NUM_64
-//     };
-//     // i = 10
-//     if abs_tick & 0x400 != 0 {
-//         ratio = (ratio * U128([0xf3392b0822bb6000, 0])) >> NUM_64
-//     };
-//     // i = 11
-//     if abs_tick & 0x800 != 0 {
-//         ratio = (ratio * U128([0xe7159475a2caf000, 0])) >> NUM_64
-//     };
-//     // i = 12
-//     if abs_tick & 0x1000 != 0 {
-//         ratio = (ratio * U128([0xd097f3bdfd2f2000, 0])) >> NUM_64
-//     };
-//     // i = 13
-//     if abs_tick & 0x2000 != 0 {
-//         ratio = (ratio * U128([0xa9f746462d9f8000, 0])) >> NUM_64
-//     };
-//     // i = 14
-//     if abs_tick & 0x4000 != 0 {
-//         ratio = (ratio * U128([0x70d869a156f31c00, 0])) >> NUM_64
-//     };
-//     // i = 15
-//     if abs_tick & 0x8000 != 0 {
-//         ratio = (ratio * U128([0x31be135f97ed3200, 0])) >> NUM_64
-//     };
-//     // i = 16
-//     if abs_tick & 0x10000 != 0 {
-//         ratio = (ratio * U128([0x9aa508b5b85a500, 0])) >> NUM_64
-//     };
-//     // i = 17
-//     if abs_tick & 0x20000 != 0 {
-//         ratio = (ratio * U128([0x5d6af8dedc582c, 0])) >> NUM_64
-//     };
-//     // i = 18
-//     if abs_tick & 0x40000 != 0 {
-//         ratio = (ratio * U128([0x2216e584f5fa, 0])) >> NUM_64
-//     }
-//
-//     // Divide to obtain 1.0001^(2^(i - 1)) * 2^32 in numerator
-//     if tick > 0 {
-//         ratio = U128::MAX / ratio;
-//     }
-//
-//     Ok(ratio.as_u128())
-// }
+/// Helper function to get signed delta amount_1 for given liquidity and price range
+pub fn get_delta_amount_1_signed(
+    sqrt_ratio_a_x64: u128,
+    sqrt_ratio_b_x64: u128,
+    liquidity: i128,
+) -> Result<u128, &'static str> {
+    if liquidity < 0 {
+        Ok(get_delta_amount_1_unsigned(
+            sqrt_ratio_a_x64,
+            sqrt_ratio_b_x64,
+            u128::try_from(-liquidity).unwrap(),
+            false,
+        ))
+    } else {
+        Ok(get_delta_amount_1_unsigned(
+            sqrt_ratio_a_x64,
+            sqrt_ratio_b_x64,
+            u128::try_from(liquidity).unwrap(),
+            true,
+        ))
+    }
+}
+
+pub fn get_delta_amounts_signed(
+    tick_current: i32,
+    sqrt_price_x64_current: u128,
+    tick_lower: i32,
+    tick_upper: i32,
+    liquidity_delta: i128,
+) -> Result<(u128, u128), &'static str> {
+    let mut amount_0 = 0;
+    let mut amount_1 = 0;
+    if tick_current < tick_lower {
+        amount_0 = get_delta_amount_0_signed(
+            get_sqrt_price_at_tick(tick_lower)?,
+            get_sqrt_price_at_tick(tick_upper)?,
+            liquidity_delta,
+        )
+            .unwrap();
+    } else if tick_current < tick_upper {
+        amount_0 = get_delta_amount_0_signed(
+            sqrt_price_x64_current,
+            get_sqrt_price_at_tick(tick_upper)?,
+            liquidity_delta,
+        )
+            .unwrap();
+        amount_1 = get_delta_amount_1_signed(
+            get_sqrt_price_at_tick(tick_lower)?,
+            sqrt_price_x64_current,
+            liquidity_delta,
+        )
+            .unwrap();
+    } else {
+        amount_1 = get_delta_amount_1_signed(
+            get_sqrt_price_at_tick(tick_lower)?,
+            get_sqrt_price_at_tick(tick_upper)?,
+            liquidity_delta,
+        )
+            .unwrap();
+    }
+    Ok((amount_0, amount_1))
+}
 
 pub fn add_delta(x: u128, y: i128) -> Result<u128, &'static str> {
     let z: u128;
@@ -278,4 +300,9 @@ pub fn add_delta(x: u128, y: i128) -> Result<u128, &'static str> {
     }
 
     Ok(z)
+}
+
+#[cfg(test)]
+pub mod unit_test {
+
 }

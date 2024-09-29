@@ -1,12 +1,14 @@
+use std::ops::BitXor;
 use arrayref::{array_ref, array_refs};
 use num_traits::Zero;
-use numext_fixed_uint::{U1024, u128, U512};
 use solana_sdk::pubkey::Pubkey;
 
 use crate::account::account::AccountDataSerializer;
 use crate::formula::clmm::constant::{MAX_TICK, MIN_TICK, POOL_TICK_ARRAY_BITMAP_SEED, TICK_ARRAY_BITMAP_SIZE, TICK_ARRAY_SIZE, TICK_ARRAY_SIZE_USIZE};
+use crate::formula::clmm::raydium_swap_state::add_delta;
+use crate::formula::clmm::u256_math::{U1024, U512};
 use crate::r#struct::market::Market;
-use crate::r#struct::pools::RaydiumRewardInfo;
+use crate::r#struct::pools::{RaydiumRewardInfo};
 
 #[repr(packed)]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -55,6 +57,44 @@ impl AccountDataSerializer for TickState {
 impl TickState {
     pub fn check_is_out_of_boundary(tick: i32) -> bool {
         tick < MIN_TICK || tick > MAX_TICK
+    }
+
+    pub fn update(
+        &mut self,
+        tick_current: i32,
+        liquidity_delta: i128,
+        fee_growth_global_0_x64: u128,
+        fee_growth_global_1_x64: u128,
+        upper: bool,
+        reward_infos: &[RaydiumRewardInfo; 3],
+    ) -> Result<bool, &'static str> {
+        let liquidity_gross_before = self.liquidity_gross;
+        let liquidity_gross_after =
+            add_delta(liquidity_gross_before, liquidity_delta)?;
+
+        // Either liquidity_gross_after becomes 0 (uninitialized) XOR liquidity_gross_before
+        // was zero (initialized)
+        let flipped = (liquidity_gross_after == 0) != (liquidity_gross_before == 0);
+        if liquidity_gross_before == 0 {
+            // by convention, we assume that all growth before a tick was initialized happened _below_ the tick
+            if self.tick <= tick_current {
+                self.fee_growth_outside_0_x64 = fee_growth_global_0_x64;
+                self.fee_growth_outside_1_x64 = fee_growth_global_1_x64;
+                self.reward_growths_outside_x64 = RaydiumRewardInfo::get_reward_growths(reward_infos);
+            }
+        }
+
+        self.liquidity_gross = liquidity_gross_after;
+
+        // when the lower (upper) tick is crossed left to right (right to left),
+        // liquidity must be added (removed)
+        self.liquidity_net = if upper {
+            self.liquidity_net.checked_sub(liquidity_delta)
+        } else {
+            self.liquidity_net.checked_add(liquidity_delta)
+        }
+            .unwrap();
+        Ok(flipped)
     }
 
     pub fn cross(
@@ -157,6 +197,28 @@ impl AccountDataSerializer for TickArrayState {
 }
 
 impl TickArrayState {
+    pub fn initialize(
+        &mut self,
+        start_index: i32,
+        tick_spacing: u16,
+        pool_key: Pubkey,
+    ) -> Result<(), &'static str> {
+        TickArrayState::check_is_valid_start_index(start_index, tick_spacing);
+        self.start_tick_index = start_index;
+        self.pool_id = pool_key;
+        // self.recent_epoch = get_recent_epoch()?;
+        Ok(())
+    }
+
+    pub fn get_tick_state_mut(
+        &mut self,
+        tick_index: i32,
+        tick_spacing: u16,
+    ) -> Result<&mut TickState, &'static str> {
+        let offset_in_array = self.get_tick_offset_in_array(tick_index, tick_spacing)?;
+        Ok(&mut self.ticks[offset_in_array])
+    }
+
     pub fn get_array_start_index(tick_index: i32, tick_spacing: u16) -> i32 {
         let ticks_in_array = TickArrayState::tick_count(tick_spacing);
         let mut start = tick_index / ticks_in_array;
@@ -235,7 +297,7 @@ impl TickArrayState {
         Ok(())
     }
 
-    fn get_tick_offset_in_array(&self, tick_index: i32, tick_spacing: u16) -> Result<usize, &'static str> {
+    pub(crate) fn get_tick_offset_in_array(&self, tick_index: i32, tick_spacing: u16) -> Result<usize, &'static str> {
         let start_tick_index = TickArrayState::get_array_start_index(tick_index, tick_spacing);
         if start_tick_index != self.start_tick_index {
             return Err("invalid tick array")
@@ -256,6 +318,18 @@ impl TickArrayState {
         else {
             None
         }
+    }
+
+    pub fn check_is_valid_start_index(tick_index: i32, tick_spacing: u16) -> bool {
+        if TickState::check_is_out_of_boundary(tick_index) {
+            if tick_index > MAX_TICK {
+                return false;
+            }
+            let min_start_index =
+                TickArrayState::get_array_start_index(MIN_TICK, tick_spacing);
+            return tick_index == min_start_index;
+        }
+        tick_index % TickArrayState::tick_count(tick_spacing) == 0
     }
 }
 
@@ -290,6 +364,35 @@ impl AccountDataSerializer for TickArrayBitmapExtension {
 }
 
 impl TickArrayBitmapExtension {
+    pub fn flip_tick_array_bit(
+        &mut self,
+        tick_array_start_index: i32,
+        tick_spacing: u16,
+    ) -> Result<(), &'static str> {
+        let (offset, tick_array_bitmap) = self.get_bitmap(tick_array_start_index, tick_spacing)?;
+        let tick_array_offset_in_bitmap =
+            Self::tick_array_offset_in_bitmap(tick_array_start_index, tick_spacing);
+        let tick_array_bitmap = U512(tick_array_bitmap);
+        let mask = U512::one() << tick_array_offset_in_bitmap;
+        if tick_array_start_index < 0 {
+            self.negative_tick_array_bitmap[offset] = tick_array_bitmap.bitxor(mask).0;
+        } else {
+            self.positive_tick_array_bitmap[offset] = tick_array_bitmap.bitxor(mask).0;
+        }
+        Ok(())
+    }
+
+    pub fn tick_array_offset_in_bitmap(tick_array_start_index: i32, tick_spacing: u16) -> i32 {
+        // m = 20520 % 30720 = 20520
+        let m = tick_array_start_index.abs() % max_tick_in_tickarray_bitmap(tick_spacing);
+        // tick_array_offset_in_bitmap = m / 60 * 1 = 20520 / 60 = 342
+        let mut tick_array_offset_in_bitmap = m / TickArrayState::tick_count(tick_spacing);
+        if tick_array_start_index < 0 && m != 0 {
+            tick_array_offset_in_bitmap = TICK_ARRAY_BITMAP_SIZE - tick_array_offset_in_bitmap;
+        }
+        tick_array_offset_in_bitmap // 342
+    }
+
     pub fn check_tick_array_is_initialized(
         &self,
         tick_array_start_index: i32,
@@ -300,7 +403,7 @@ impl TickArrayBitmapExtension {
         let tick_array_offset_in_bitmap =
             tick_array_offset_in_bitmap(tick_array_start_index, tick_spacing);
 
-        if U512(tick_array_bitmap).bit(tick_array_offset_in_bitmap as usize).unwrap_or(false) {
+        if U512(tick_array_bitmap).bit(tick_array_offset_in_bitmap as usize) {
             return Ok((true, tick_array_start_index));
         }
         Ok((false, tick_array_start_index))
@@ -425,6 +528,10 @@ impl TickArrayBitmapExtension {
 
         vec.try_into().unwrap()
     }
+}
+
+pub fn max_tick_in_tickarray_bitmap(tick_spacing: u16) -> i32 {
+    i32::from(tick_spacing) * TICK_ARRAY_SIZE * TICK_ARRAY_BITMAP_SIZE
 }
 
 pub fn check_current_tick_array_is_initialized(
@@ -561,5 +668,62 @@ pub fn get_bitmap_tick_boundary(tick_array_start_index: i32, tick_spacing: u16) 
         (-min_value, -min_value + ticks_in_one_bitmap)
     } else {
         (min_value, min_value + ticks_in_one_bitmap)
+    }
+}
+
+#[cfg(test)]
+pub mod tick_array_bitmap_extension_test {
+    use std::str::FromStr;
+    use solana_sdk::account_info::AccountInfo;
+    use super::*;
+
+    pub fn flip_tick_array_bit_helper(
+        tick_array_bitmap_extension: &mut TickArrayBitmapExtension,
+        tick_spacing: u16,
+        init_tick_array_start_indexs: Vec<i32>,
+    ) {
+        for start_index in init_tick_array_start_indexs {
+            tick_array_bitmap_extension
+                .flip_tick_array_bit(start_index, tick_spacing)
+                .unwrap();
+        }
+    }
+
+    pub struct BuildExtensionAccountInfo {
+        pub key: Pubkey,
+        pub lamports: u64,
+        pub owner: Pubkey,
+        pub data: Vec<u8>,
+    }
+
+    impl Default for BuildExtensionAccountInfo {
+        #[inline]
+        fn default() -> BuildExtensionAccountInfo {
+            BuildExtensionAccountInfo {
+                key: Pubkey::new_unique(),
+                lamports: 0,
+                owner: Pubkey::from_str("CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK").unwrap(),
+                data: vec![0; 1832],
+            }
+        }
+    }
+
+    pub fn build_tick_array_bitmap_extension_info<'info>(
+        param: &mut BuildExtensionAccountInfo,
+    ) -> AccountInfo {
+        let disc_bytes = [60, 150, 36, 219, 97, 128, 139, 153];
+        for i in 0..8 {
+            param.data[i] = disc_bytes[i];
+        }
+        AccountInfo::new(
+            &param.key,
+            false,
+            true,
+            &mut param.lamports,
+            param.data.as_mut_slice(),
+            &param.owner,
+            false,
+            0,
+        )
     }
 }

@@ -1,10 +1,11 @@
-use numext_fixed_uint::U128;
+use crate::formula::clmm::u256_math::U128;
 
 pub const MIN_TICK: i32 = -443636;
 pub const MAX_TICK: i32 = -MIN_TICK;
 pub const TICK_ARRAY_SIZE: i32 = 60;
 pub const TICK_ARRAY_BITMAP_SIZE: i32 = 512;
 pub const NUM_64: U128 = U128([64, 0]);
+pub const REWARD_NUM: usize = 3;
 
 pub const BIT_PRECISION: u32 = 16;
 pub const FEE_RATE_DENOMINATOR_VALUE: u32 = 1_000_000;

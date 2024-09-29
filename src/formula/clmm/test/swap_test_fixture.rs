@@ -1,10 +1,8 @@
-use std::cell::RefCell;
-
 use solana_sdk::pubkey::Pubkey;
 
 use crate::formula::clmm::orca_swap_state::{MAX_TICK_INDEX, MIN_TICK_INDEX, NUM_REWARDS, PostSwapUpdate, SwapTickSequence, Tick, TICK_ARRAY_SIZE, TICK_ARRAY_SIZE_USIZE, TickArray, TickArrayType, TickUpdate};
 use crate::formula::clmm::orca_swap_state::tick_builder::TickBuilder;
-use crate::formula::clmm::sqrt_price_math::tick_to_sqrt_price_x64;
+use crate::formula::clmm::raydium_sqrt_price_math::tick_to_sqrt_price_x64;
 use crate::formula::orca_clmm::swap_internal;
 use crate::r#struct::pools::{OrcaClmmMarket, WhirlpoolRewardInfo};
 use crate::r#struct::pools::whirlpool_builder::WhirlpoolBuilder;
@@ -135,6 +133,7 @@ impl SwapTestFixture {
     pub fn new(info: SwapTestFixtureInfo) -> SwapTestFixture {
         let whirlpool = WhirlpoolBuilder::new()
             .liquidity(info.liquidity)
+            // todo
             .sqrt_price(tick_to_sqrt_price_x64(&info.curr_tick_index).unwrap())
             .tick_spacing(info.tick_spacing)
             .tick_current_index(info.curr_tick_index)

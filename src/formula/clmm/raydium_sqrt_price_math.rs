@@ -113,7 +113,7 @@ pub fn get_next_sqrt_price_from_amount_1_rounding_down(
 #[cfg(test)]
 mod test {
     use crate::formula::clmm::constant::{MAX_SQRT_PRICE_X64, MIN_SQRT_PRICE_X64};
-    use crate::formula::clmm::sqrt_price_math::{price_to_sqrt_price_x64, sqrt_price_x64_to_price, sqrt_price_x64_to_tick, tick_to_sqrt_price_x64};
+    use crate::formula::clmm::raydium_sqrt_price_math::{price_to_sqrt_price_x64, sqrt_price_x64_to_price, sqrt_price_x64_to_tick, tick_to_sqrt_price_x64};
 
     #[test]
     fn test_tick_to_sqrt_price_x64() {
