@@ -5,6 +5,7 @@ use crate::account::account::{AccountDataSerializer, DeserializedAccount, Deseri
 use crate::r#struct::market::{Market, PoolOperation};
 use crate::formula::base::Formula;
 use crate::formula::base::Formula::ConcentratedLiquidity;
+use crate::formula::orca_clmm::swap_internal;
 use crate::utils::PubkeyPair;
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -89,6 +90,7 @@ impl PoolOperation for OrcaClmmMarket {
 
     fn swap(&self, accounts: &Vec<DeserializedAccount>) {
         todo!()
+        // swap_internal()
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -192,7 +194,8 @@ impl OrcaClmmAccount {
     }
 }
 
-// #[cfg(test)]
+// todo
+#[cfg(test)]
 pub mod whirlpool_builder {
     use crate::formula::clmm::orca_swap_state::NUM_REWARDS;
     use super::{OrcaClmmMarket, WhirlpoolRewardInfo};

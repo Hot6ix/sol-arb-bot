@@ -1,9 +1,8 @@
 use std::collections::VecDeque;
 use std::ops::Neg;
-use num_bigfloat::BigFloat;
+
 use crate::formula::clmm::concentrated_liquidity::compute_swap_step;
 use crate::formula::clmm::constant::{FEE_RATE_DENOMINATOR_VALUE, MAX_SQRT_PRICE_X64, MAX_TICK, MIN_SQRT_PRICE_X64, MIN_TICK};
-use crate::formula::clmm::raydium_sqrt_price_math::Q64;
 use crate::formula::clmm::raydium_swap_state::{add_delta, StepComputations, SwapState};
 use crate::formula::clmm::raydium_tick_array::{TickArrayBitmapExtension, TickArrayState, TickState};
 use crate::formula::clmm::raydium_tick_math::{get_sqrt_price_at_tick, get_tick_at_sqrt_price};

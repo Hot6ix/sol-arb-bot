@@ -124,13 +124,7 @@ pub fn swap_internal(
                     (whirlpool.fee_growth_global_a, curr_fee_growth_global_input)
                 };
 
-                // let signed_liquidity_net = if a_to_b {
-                //     -next_tick.liquidity_net
-                // } else {
-                //     next_tick.liquidity_net
-                // };
-                // let next_liquidity = add_delta(curr_liquidity, signed_liquidity_net)?;
-                ///////////////////////
+                // todo: for test only
                 let (update, next_liquidity) = calculate_update(
                     next_tick.unwrap(),
                     a_to_b,
@@ -139,8 +133,16 @@ pub fn swap_internal(
                     fee_growth_global_b,
                     &next_reward_infos,
                 )?;
+                // let next_liquidity = calculate_update(
+                //     next_tick.unwrap(),
+                //     a_to_b,
+                //     curr_liquidity,
+                //     fee_growth_global_a,
+                //     fee_growth_global_b,
+                // )?;
 
                 curr_liquidity = next_liquidity;
+                // todo: for test only
                 swap_tick_sequence.update_tick(
                     next_array_index,
                     next_tick_index,
@@ -211,6 +213,7 @@ fn get_next_sqrt_prices(
     (next_tick_price, next_sqrt_price_limit)
 }
 
+// todo: for test only
 fn calculate_update(
     tick: &Tick,
     a_to_b: bool,
@@ -219,8 +222,7 @@ fn calculate_update(
     fee_growth_global_b: u128,
     reward_infos: &[WhirlpoolRewardInfo; NUM_REWARDS],
 ) -> Result<(TickUpdate, u128), &'static str> {
-    // Use updated fee_growth for crossing tick
-    // Use -liquidity_net if going left, +liquidity_net going right
+// ) -> Result<u128, &'static str> {
     let signed_liquidity_net = if a_to_b {
         -tick.liquidity_net
     } else {
@@ -235,6 +237,7 @@ fn calculate_update(
     let next_liquidity = add_delta(liquidity, signed_liquidity_net)?;
 
     Ok((update, next_liquidity))
+    // Ok(next_liquidity)
 }
 
 fn calculate_fees(
@@ -298,77 +301,4 @@ pub fn next_whirlpool_reward_infos(
     }
 
     Ok(next_reward_infos)
-}
-
-#[cfg(test)]
-mod swap_test {
-    use crate::formula::clmm::orca_swap_state::SwapTickSequence;
-    use crate::formula::clmm::orca_tick_math::sqrt_price_from_tick_index;
-    use crate::formula::clmm::test::liquidity_test_fixture::create_whirlpool_reward_infos;
-    use crate::formula::clmm::test::swap_test_fixture::{assert_swap, assert_swap_tick_state, SwapTestExpectation, SwapTestFixture, SwapTestFixtureInfo, TestTickInfo, TickExpectation, TS_8};
-
-    #[test]
-    fn zero_l_across_tick_range_b_to_a() {
-        let swap_test_info = SwapTestFixture::new(SwapTestFixtureInfo {
-            tick_spacing: TS_8,
-            liquidity: 0,
-            curr_tick_index: 255,
-            start_tick_index: 0,
-            trade_amount: 100_000,
-            sqrt_price_limit: sqrt_price_from_tick_index(1720),
-            amount_specified_is_input: false,
-            a_to_b: false,
-            array_1_ticks: &vec![TestTickInfo {
-                // p1
-                index: 448,
-                liquidity_net: 0,
-                ..Default::default()
-            }],
-            array_2_ticks: Some(&vec![TestTickInfo {
-                // p1
-                index: 720,
-                liquidity_net: 0,
-                ..Default::default()
-            }]),
-            array_3_ticks: Some(&vec![]),
-            reward_infos: create_whirlpool_reward_infos(100, 10),
-            fee_growth_global_a: 100,
-            fee_growth_global_b: 100,
-            ..Default::default()
-        });
-        let mut tick_sequence = SwapTickSequence::new(
-            swap_test_info.tick_arrays[0].clone(),
-            Some(swap_test_info.tick_arrays[1].clone()),
-            Some(swap_test_info.tick_arrays[2].clone()),
-        );
-        let post_swap = swap_test_info.run(&mut tick_sequence, 100);
-        assert_swap(
-            &post_swap,
-            &SwapTestExpectation {
-                traded_amount_a: 0,
-                traded_amount_b: 0,
-                end_tick_index: 1720,
-                end_liquidity: 0,
-                end_reward_growths: [10, 10, 10],
-            },
-        );
-        let tick_lower = tick_sequence.get_tick(0, 448, TS_8).unwrap();
-        assert_swap_tick_state(
-            tick_lower,
-            &TickExpectation {
-                fee_growth_outside_a: 100,
-                fee_growth_outside_b: 100,
-                reward_growths_outside: [10, 10, 10],
-            },
-        );
-        let tick_upper = tick_sequence.get_tick(1, 720, TS_8).unwrap();
-        assert_swap_tick_state(
-            tick_upper,
-            &TickExpectation {
-                fee_growth_outside_a: 100,
-                fee_growth_outside_b: 100,
-                reward_growths_outside: [10, 10, 10],
-            },
-        );
-    }
 }

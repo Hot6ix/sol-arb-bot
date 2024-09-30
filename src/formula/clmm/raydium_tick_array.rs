@@ -206,7 +206,6 @@ impl TickArrayState {
         TickArrayState::check_is_valid_start_index(start_index, tick_spacing);
         self.start_tick_index = start_index;
         self.pool_id = pool_key;
-        // self.recent_epoch = get_recent_epoch()?;
         Ok(())
     }
 
@@ -383,9 +382,7 @@ impl TickArrayBitmapExtension {
     }
 
     pub fn tick_array_offset_in_bitmap(tick_array_start_index: i32, tick_spacing: u16) -> i32 {
-        // m = 20520 % 30720 = 20520
         let m = tick_array_start_index.abs() % max_tick_in_tickarray_bitmap(tick_spacing);
-        // tick_array_offset_in_bitmap = m / 60 * 1 = 20520 / 60 = 342
         let mut tick_array_offset_in_bitmap = m / TickArrayState::tick_count(tick_spacing);
         if tick_array_start_index < 0 && m != 0 {
             tick_array_offset_in_bitmap = TICK_ARRAY_BITMAP_SIZE - tick_array_offset_in_bitmap;
@@ -676,18 +673,6 @@ pub mod tick_array_bitmap_extension_test {
     use std::str::FromStr;
     use solana_sdk::account_info::AccountInfo;
     use super::*;
-
-    pub fn flip_tick_array_bit_helper(
-        tick_array_bitmap_extension: &mut TickArrayBitmapExtension,
-        tick_spacing: u16,
-        init_tick_array_start_indexs: Vec<i32>,
-    ) {
-        for start_index in init_tick_array_start_indexs {
-            tick_array_bitmap_extension
-                .flip_tick_array_bit(start_index, tick_spacing)
-                .unwrap();
-        }
-    }
 
     pub struct BuildExtensionAccountInfo {
         pub key: Pubkey,

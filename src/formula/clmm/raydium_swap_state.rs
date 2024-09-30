@@ -1,10 +1,12 @@
 use std::mem::swap;
+
 use num_bigfloat::BigFloat;
-use crate::formula::clmm::constant::{BIT_PRECISION};
+
 use crate::formula::clmm::full_math::MulDiv;
-use crate::formula::clmm::raydium_sqrt_price_math::{Q64, tick_to_sqrt_price_x64};
+use crate::formula::clmm::raydium_sqrt_price_math::Q64;
 use crate::formula::clmm::raydium_tick_math::get_sqrt_price_at_tick;
 use crate::formula::clmm::u256_math::U128;
+
 /*
     For Raydium Concentrated Liquidity pool
  */
