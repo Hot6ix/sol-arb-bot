@@ -166,14 +166,14 @@ impl PoolOperation for RaydiumClmmMarket {
                                 RaydiumClmmAccount::AmmConfig(amm) => {
                                     amm_config = amm.config
                                 }
-                                RaydiumClmmAccount::ObservationKey => {}
                                 RaydiumClmmAccount::TickArrayState(state) => {
+                                    // todo: push only directed tick array state
                                     tick_array_states.push_back(state.tick_array_state.clone())
                                 }
                                 RaydiumClmmAccount::TickArrayBitmapExtension(extension) => {
                                     tick_array_bitmap_extension = extension.tick_array_bitmap_extension.clone()
                                 }
-                                _ => {}
+                                RaydiumClmmAccount::ObservationKey => {}
                             }
                         }
                         _ => {}

@@ -7,24 +7,26 @@ pub enum Event {
 
 pub type Subscriber = fn();
 
+pub type ClosureSubscriber = dyn FnOnce() -> ();
+
 #[derive(Default, Clone)]
 pub struct Publisher {
-    events: HashMap<Event, Vec<Subscriber>>
+    events: HashMap<Event, Vec<ClosureSubscriber>>
 }
 
 impl Publisher {
-    pub fn subscribe(&mut self, event: Event, listener: Subscriber) {
+    pub fn subscribe(&mut self, event: Event, listener: Box<ClosureSubscriber>) {
         self.events.entry(event.clone()).or_default();
         if let Some(events) = self.events.get_mut(&event) {
             events.push(listener);
         }
     }
 
-    pub fn unsubscribe(&mut self, event: Event, listener: Subscriber) {
-        self.events.get_mut(&event).unwrap().retain(|&subscriber| {
-            subscriber != listener
-        })
-    }
+    // pub fn unsubscribe(&mut self, event: Event, listener: Subscriber) {
+    //     self.events.get_mut(&event).unwrap().retain(|&subscriber| {
+    //         subscriber != listener
+    //     })
+    // }
 
     pub fn notify(&self, event: Event) {
         if let Some(listeners) = &self.events.get(&event) {

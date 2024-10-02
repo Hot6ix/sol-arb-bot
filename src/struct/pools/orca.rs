@@ -5,7 +5,9 @@ use crate::account::account::{AccountDataSerializer, DeserializedAccount, Deseri
 use crate::r#struct::market::{Market, PoolOperation};
 use crate::formula::base::Formula;
 use crate::formula::base::Formula::ConcentratedLiquidity;
+use crate::formula::clmm::orca_swap_state::{ProxiedTickArray, SwapTickSequence, TickArrayAccount};
 use crate::formula::orca_clmm::swap_internal;
+use crate::r#struct::pools::RaydiumClmmMarket;
 use crate::utils::PubkeyPair;
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -89,8 +91,53 @@ impl PoolOperation for OrcaClmmMarket {
     }
 
     fn swap(&self, accounts: &Vec<DeserializedAccount>) {
-        todo!()
-        // swap_internal()
+        let amount = 0u64;
+        let a_to_b = true;
+        let amount_specified_is_input = true;
+        let mut market = OrcaClmmMarket::default();
+        let mut tick_array_list: Vec<ProxiedTickArray> = Vec::new();
+        let mut whirl_pools_config = WhirlpoolsConfig::default();
+
+        accounts.iter().for_each(|account| {
+            match account {
+                DeserializedAccount::PoolAccount(pool) => {
+                    if let Some(orca_clmm_market) = pool.operation.as_any().downcast_ref::<OrcaClmmMarket>() {
+                        market = *orca_clmm_market;
+                    }
+                }
+                DeserializedAccount::ConfigAccount(config) => {
+                    match config {
+                        DeserializedConfigAccount::OrcaClmmConfigAccount(orca_config) => {
+                            match orca_config {
+                                OrcaClmmAccount::WhirlpoolsConfig(whirl_pools) => {
+                                    whirl_pools_config = whirl_pools.config;
+                                }
+                                OrcaClmmAccount::TickArray(tick_array) => {
+                                    // todo: push only directed tick array state
+                                    tick_array_list.push(
+                                        ProxiedTickArray::new_initialized(tick_array.tick_array.clone())
+                                    );
+                                }
+                            }
+                        }
+                        DeserializedConfigAccount::RaydiumClmmConfigAccount(_) => {}
+                        DeserializedConfigAccount::EmptyConfigAccount => {}
+                    }
+                }
+                DeserializedAccount::TokenAccount(_) => {}
+                DeserializedAccount::Account(_) => {}
+            }
+        });
+
+        // swap_internal(
+        //     market,
+        //     SwapTickSequence::new(),
+        //     amount,
+        //     market.sqrt_price,
+        //     amount_specified_is_input,
+        //     a_to_b,
+        //     064
+        // ).expect("TODO: panic message");
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -148,7 +195,7 @@ pub struct WhirlpoolsConfigAccount {
     pub market: Market,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct WhirlpoolsConfig {
     pub fee_authority: Pubkey, // 32
     pub collect_protocol_fees_authority: Pubkey, // 32
@@ -173,7 +220,8 @@ impl AccountDataSerializer for WhirlpoolsConfig {
 
 #[derive(Clone, PartialEq)]
 pub enum OrcaClmmAccount {
-    WhirlpoolsConfig(WhirlpoolsConfigAccount)
+    WhirlpoolsConfig(WhirlpoolsConfigAccount),
+    TickArray(TickArrayAccount)
 }
 
 impl OrcaClmmAccount {
@@ -182,15 +230,14 @@ impl OrcaClmmAccount {
             OrcaClmmAccount::WhirlpoolsConfig(account) => {
                 account.pubkey
             }
+            OrcaClmmAccount::TickArray(account) => {
+                account.pubkey
+            }
         }
     }
 
     pub fn get_market(&self) -> Market {
-        match self {
-            OrcaClmmAccount::WhirlpoolsConfig(account) => {
-                account.market
-            }
-        }
+        Market::ORCA
     }
 }
 

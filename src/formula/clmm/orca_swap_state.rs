@@ -1,4 +1,7 @@
 use solana_sdk::pubkey::Pubkey;
+use crate::formula::clmm::constant::{POOL_TICK_ARRAY_BITMAP_SEED, TICK_ARRAY_SEED};
+use crate::formula::clmm::raydium_tick_array::TickArrayState;
+use crate::r#struct::market::Market;
 use crate::r#struct::pools::WhirlpoolRewardInfo;
 
 pub const NUM_REWARDS: usize = 3;
@@ -252,7 +255,14 @@ impl TickUpdate {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default, PartialEq)]
+pub struct TickArrayAccount {
+    pub pubkey: Pubkey,
+    pub market: Market,
+    pub tick_array: TickArray
+}
+
+#[derive(Clone, PartialEq)]
 pub struct TickArray {
     pub start_tick_index: i32,
     pub ticks: [Tick; TICK_ARRAY_SIZE_USIZE],
@@ -334,6 +344,34 @@ impl TickArrayType for TickArray {
         }
         self.ticks.get_mut(offset as usize).unwrap().update(update);
         Ok(())
+    }
+}
+
+impl Default for TickArray {
+    fn default() -> Self {
+        TickArray {
+            start_tick_index: i32::default(),
+            ticks: [Tick::default(); 88],
+            whirlpool: Pubkey::default(),
+        }
+    }
+}
+
+impl TickArray {
+    pub fn key(program_id: &Pubkey, pool_id: &Pubkey, tick: i32) -> Option<Pubkey> {
+        if let Some((pubkey, _)) = Pubkey::try_find_program_address(
+            &[
+                TICK_ARRAY_SEED.as_bytes(),
+                pool_id.as_ref(),
+                tick.to_string().as_ref()
+            ],
+            program_id
+        ) {
+            Some(pubkey)
+        }
+        else {
+            None
+        }
     }
 }
 

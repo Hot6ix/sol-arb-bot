@@ -9,6 +9,16 @@ pub struct Arbitrageur {
 }
 
 impl Arbitrageur {
+    pub fn new(
+        shared_account_bin: Arc<Mutex<Vec<DeserializedAccount>>>,
+        path_list: Arc<Mutex<HashMap<Pubkey, Vec<DeserializedPoolAccount>>>>
+    ) -> Arbitrageur {
+        Arbitrageur {
+            shared_account_bin,
+            path_list
+        }
+    }
+
     pub fn arbitrage_single(
         &self,
         target_mint: Pubkey,

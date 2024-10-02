@@ -1,12 +1,14 @@
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::account::Account;
 use solana_sdk::pubkey::Pubkey;
+use crate::account::resolver::resolve_pool_account;
 use crate::formula::base::Formula;
 
 use crate::formula::clmm::constant::TICK_ARRAY_SEED;
+use crate::formula::clmm::orca_swap_state::{TICK_ARRAY_SIZE, TickArray, TickArrayAccount};
 use crate::formula::clmm::raydium_tick_array::{TickArrayBitmapExtension, TickArrayBitmapExtensionAccount, TickArrayState, TickArrayStateAccount};
 use crate::r#struct::market::{Market, PoolOperation};
-use crate::r#struct::pools::{OrcaClmmAccount, RaydiumClmmAccount, RaydiumClmmMarket};
+use crate::r#struct::pools::{OrcaClmmAccount, OrcaClmmMarket, RaydiumClmmAccount, RaydiumClmmMarket};
 use crate::r#struct::token::TokenAccount;
 
 #[derive(Clone)]
@@ -110,6 +112,29 @@ impl DeserializedPoolAccount {
                 ];
                 vec.append(&mut self.operation.get_swap_related_pubkeys());
 
+                if self.operation.get_formula() == Formula::ConcentratedLiquidity {
+                    // let accounts = rpc_client.unwrap().get_multiple_accounts(&[self.pubkey, tick_array_bitmap_extension_pubkey]).expect("failed to fetch accounts");
+                    let pool_account = rpc_client.unwrap().get_account(&self.pubkey).expect("failed to fetch pool");
+                    let pool = resolve_pool_account(&Market::ORCA, &pool_account.data);
+                    let market = pool.as_any().downcast_ref::<OrcaClmmMarket>().expect("failed to downcast");
+
+                    for i in 0..2 {
+                        let zero_for_one: i32 = if i % 2 == 0 { -1 } else { 1 };
+                        for j in 0..3 {
+                            let tick = TickArray::key(
+                                &self.account.owner,
+                                &self.pubkey,
+                                market.tick_current_index + zero_for_one * (market.tick_spacing as i32 * TICK_ARRAY_SIZE) * j
+                            ).expect("failed to fetch tick array");
+
+                            vec.push((
+                                DeserializedAccount::ConfigAccount(DeserializedConfigAccount::OrcaClmmConfigAccount(OrcaClmmAccount::TickArray(TickArrayAccount::default()))),
+                                tick
+                            ));
+                        }
+                    }
+                }
+
                 Ok(vec)
             }
             Market::RAYDIUM => {
@@ -122,11 +147,15 @@ impl DeserializedPoolAccount {
                 if self.operation.get_formula() == Formula::ConcentratedLiquidity {
                     // get tick array states
                     let tick_array_bitmap_extension_pubkey = TickArrayBitmapExtension::key(&self.account.owner, &self.pubkey).expect("failed to get tick_array_bitmap_extension pubkey");
-                    let tick_array_bitmap_extension_account = rpc_client.unwrap().get_account(&tick_array_bitmap_extension_pubkey).expect("failed to fetch tick_array_bitmap_extension");
+                    let accounts = rpc_client.unwrap().get_multiple_accounts(&[self.pubkey, tick_array_bitmap_extension_pubkey]).expect("failed to fetch accounts");
+
+                    let tick_array_bitmap_extension_account = accounts[1].to_owned().expect("failed to fetch tick_array_bitmap_extension");
                     let tick_array_bitmap_extension = TickArrayBitmapExtension::unpack_data(&tick_array_bitmap_extension_account.data);
                     vec.push((DeserializedAccount::ConfigAccount(DeserializedConfigAccount::RaydiumClmmConfigAccount(RaydiumClmmAccount::TickArrayBitmapExtension(TickArrayBitmapExtensionAccount::default()))), tick_array_bitmap_extension_pubkey));
 
-                    let market = self.operation.as_any().downcast_ref::<RaydiumClmmMarket>().expect("failed to downcast");
+                    let pool_account = accounts[0].to_owned().expect("failed to fetch pool");
+                    let pool = resolve_pool_account(&Market::RAYDIUM, &pool_account.data);
+                    let market = pool.as_any().downcast_ref::<RaydiumClmmMarket>().expect("failed to downcast");
 
                     for i in 0..2 {
                         let zero_for_one = if i % 2 == 0 { true } else { false };

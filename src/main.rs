@@ -1,6 +1,6 @@
 extern crate core;
 
-use std::cmp::PartialEq;
+use std::cmp::{min, PartialEq};
 use std::collections::HashMap;
 use std::fmt::format;
 use std::str::FromStr;
@@ -81,9 +81,8 @@ async fn main() {
 
     // collect swap-related pubkeys from pool accounts
     probe.start_watching(Arc::clone(&pool_account_bin), Arc::clone(&shared_account_bin));
-    probe.publisher.lock().unwrap().subscribe(Event::UpdateAccounts, || {
-        println!("updated")
-    });
+    // setup and arbitrage
+    probe.publisher.lock().unwrap().subscribe(Event::UpdateAccounts, Box::new(()));
 
     let shared_pool_account_bin = Arc::clone(&shared_account_bin);
     let path_list = Arc::clone(&path_list);
@@ -137,21 +136,8 @@ async fn main() {
         }
     });
 
-    // let path_list = Arc::clone(&base_path_list);
-    // spawn(async move {
-    //     loop {
-    //         println!("print path list");
-    //         path_list.lock().unwrap().iter().for_each(|x| {
-    //             println!("[{}]", x.1.iter().map(|x1| {
-    //                 format!("{}: {} ({}, {})", x1.market.name(), x1.pubkey, x1.operation.get_mint_pair().pubkey_a, x1.operation.get_mint_pair().pubkey_b)
-    //             }).collect::<Vec<String>>().join(","))
-    //         });
-    //         let _ = sleep(Duration::from_secs(5)).await;
-    //     }
-    // });
-
+    // main thread loop
     loop {
-        println!("main thread loop");
         sleep(Duration::from_secs(1)).await;
     }
 }

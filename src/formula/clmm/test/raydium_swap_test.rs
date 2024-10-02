@@ -1705,7 +1705,7 @@ pub mod pool_test {
         }
     }
 
-    mod use_tickarray_bitmap_extension_test {
+    mod use_tick_array_bitmap_extension_test {
 
         use std::ops::Deref;
         use crate::account::account::AccountDataSerializer;
@@ -1713,8 +1713,6 @@ pub mod pool_test {
         use crate::formula::clmm::raydium_tick_array::tick_array_bitmap_extension_test::{build_tick_array_bitmap_extension_info, BuildExtensionAccountInfo};
         use crate::formula::clmm::raydium_tick_math::get_sqrt_price_at_tick;
         use super::*;
-
-        // todo: this code does not work
 
         #[test]
         fn get_first_initialized_tick_array_test() {
