@@ -11,8 +11,8 @@ pub fn compute_swap_step(
     sqrt_price_current_x64: u128,
     sqrt_price_target_x64: u128,
     liquidity: u128,
-    amount_remaining: u128,
-    fee_rate: u128,
+    amount_remaining: u64,
+    fee_rate: u32,
     is_base_input: bool,
     zero_for_one: bool,
 ) -> Result<SwapStep, &'static str> {
@@ -22,7 +22,7 @@ pub fn compute_swap_step(
     let fee_rate_denominator_bf = BigFloat::from(FEE_RATE_DENOMINATOR_VALUE);
 
     if is_base_input {
-        let amount_remaining_less_fee = BigFloat::from(amount_remaining).mul(fee_rate_denominator_bf.sub(&fee_rate_bf)).div(&fee_rate_denominator_bf).floor().to_u128().unwrap();
+        let amount_remaining_less_fee = BigFloat::from(amount_remaining).mul(fee_rate_denominator_bf.sub(&fee_rate_bf)).div(&fee_rate_denominator_bf).floor().to_u64().unwrap();
 
         let amount_in = calculate_amount_in_range(
             sqrt_price_current_x64,
@@ -30,7 +30,7 @@ pub fn compute_swap_step(
             liquidity,
             zero_for_one,
             is_base_input
-        );
+        ).unwrap();
 
         swap_step.amount_in = amount_in;
         swap_step.sqrt_price_next_x64 =
@@ -53,7 +53,7 @@ pub fn compute_swap_step(
             liquidity,
             zero_for_one,
             is_base_input
-        );
+        ).unwrap();
 
         swap_step.amount_out = amount_out;
         swap_step.sqrt_price_next_x64 =
@@ -78,7 +78,7 @@ pub fn compute_swap_step(
                 sqrt_price_current_x64,
                 liquidity,
                 true
-            );
+            ).unwrap();
         }
         if !(is_exceed && !is_base_input) {
             swap_step.amount_out = get_delta_amount_1_unsigned(
@@ -86,7 +86,7 @@ pub fn compute_swap_step(
                 sqrt_price_current_x64,
                 liquidity,
                 false
-            );
+            ).unwrap();
         }
     }
     else {
@@ -96,7 +96,7 @@ pub fn compute_swap_step(
                 swap_step.sqrt_price_next_x64,
                 liquidity,
                 true
-            );
+            ).unwrap();
         }
 
         if !(is_exceed && !is_base_input) {
@@ -105,7 +105,7 @@ pub fn compute_swap_step(
                 swap_step.sqrt_price_next_x64,
                 liquidity,
                 false
-            );
+            ).unwrap();
         }
     }
 
@@ -119,7 +119,7 @@ pub fn compute_swap_step(
         }
         else {
             // swap_step.amount_in * fee_rate / (fee_rate_denominator - fee_rate)
-            BigFloat::from(swap_step.amount_in).mul(&fee_rate_bf).div(&fee_rate_denominator_bf.sub(&fee_rate_bf)).ceil().to_u128().unwrap()
+            BigFloat::from(swap_step.amount_in).mul(&fee_rate_bf).div(&fee_rate_denominator_bf.sub(&fee_rate_bf)).ceil().to_u64().unwrap()
         };
 
     Ok(swap_step)
@@ -128,9 +128,9 @@ pub fn compute_swap_step(
 #[derive(Default, Debug, PartialEq)]
 pub struct SwapStep {
     pub sqrt_price_next_x64: u128,
-    pub amount_in: u128,
-    pub amount_out: u128,
-    pub fee_amount: u128,
+    pub amount_in: u64,
+    pub amount_out: u64,
+    pub fee_amount: u64,
 }
 
 #[cfg(test)]
@@ -510,7 +510,7 @@ mod unit_test {
 
     #[allow(clippy::too_many_arguments)]
     fn test_swap(
-        amount_remaining: u128,
+        amount_remaining: u64,
         fee_rate: u16,
         liquidity: u128,
         sqrt_price_current: u128,
@@ -524,7 +524,7 @@ mod unit_test {
             sqrt_price_target_limit,
             liquidity,
             amount_remaining,
-            fee_rate as u128,
+            fee_rate as u32,
             amount_specified_is_input,
             a_to_b,
         );

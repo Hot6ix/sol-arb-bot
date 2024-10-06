@@ -5,7 +5,7 @@ use crate::account::resolver::resolve_pool_account;
 use crate::formula::base::Formula;
 
 use crate::formula::clmm::constant::TICK_ARRAY_SEED;
-use crate::formula::clmm::orca_swap_state::{TICK_ARRAY_SIZE, TickArray, TickArrayAccount};
+use crate::formula::clmm::orca_swap_state::{get_tick_array_public_keys_with_start_tick_index, TICK_ARRAY_SIZE, TickArray, TickArrayAccount};
 use crate::formula::clmm::raydium_tick_array::{TickArrayBitmapExtension, TickArrayBitmapExtensionAccount, TickArrayState, TickArrayStateAccount};
 use crate::r#struct::market::{Market, PoolOperation};
 use crate::r#struct::pools::{OrcaClmmAccount, OrcaClmmMarket, RaydiumClmmAccount, RaydiumClmmMarket};
@@ -106,7 +106,7 @@ pub struct DeserializedPoolAccount {
 impl DeserializedPoolAccount {
     pub fn get_swap_related_pubkeys(&self, rpc_client: Option<&RpcClient>) -> Result<Vec<(DeserializedAccount, Pubkey)>, &'static str> {
         match self.market {
-            Market::ORCA | Market::METEORA | Market::LIFINITY => {
+            Market::ORCA => {
                 let mut vec = vec![
                     (DeserializedAccount::PoolAccount(DeserializedPoolAccount::default()), self.pubkey)
                 ];
@@ -119,19 +119,19 @@ impl DeserializedPoolAccount {
                     let market = pool.as_any().downcast_ref::<OrcaClmmMarket>().expect("failed to downcast");
 
                     for i in 0..2 {
-                        let zero_for_one: i32 = if i % 2 == 0 { -1 } else { 1 };
-                        for j in 0..3 {
-                            let tick = TickArray::key(
-                                &self.account.owner,
-                                &self.pubkey,
-                                market.tick_current_index + zero_for_one * (market.tick_spacing as i32 * TICK_ARRAY_SIZE) * j
-                            ).expect("failed to fetch tick array");
-
+                        let zero_for_one: bool = if i % 2 == 0 { true } else { false };
+                        get_tick_array_public_keys_with_start_tick_index(
+                            market.tick_current_index,
+                            market.tick_spacing,
+                            zero_for_one,
+                            &self.account.owner,
+                            &self.pubkey,
+                        ).iter().for_each(|pubkey| {
                             vec.push((
                                 DeserializedAccount::ConfigAccount(DeserializedConfigAccount::OrcaClmmConfigAccount(OrcaClmmAccount::TickArray(TickArrayAccount::default()))),
-                                tick
+                                *pubkey
                             ));
-                        }
+                        });
                     }
                 }
 
@@ -200,6 +200,7 @@ impl DeserializedPoolAccount {
 
                 Ok(vec)
             }
+            Market::METEORA | Market::LIFINITY => { todo!() }
             Market::UNKNOWN => { Err("unknown market") }
         }
     }

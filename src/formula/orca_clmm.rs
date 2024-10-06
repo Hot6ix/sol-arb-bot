@@ -1,5 +1,5 @@
 use crate::formula::clmm::concentrated_liquidity::compute_swap_step;
-use crate::formula::clmm::constant::{MAX_SQRT_PRICE_X64, MIN_SQRT_PRICE_X64};
+use crate::formula::clmm::constant::{ORCA_MAX_SQRT_PRICE_X64, MIN_SQRT_PRICE_X64};
 use crate::formula::clmm::orca_swap_state::{checked_mul_div, next_tick_cross_update, NO_EXPLICIT_SQRT_PRICE_LIMIT, NUM_REWARDS, PostSwapUpdate, PROTOCOL_FEE_RATE_MUL_VALUE, Q64_RESOLUTION, SwapTickSequence, Tick, TICK_ARRAY_SIZE, TickUpdate};
 use crate::formula::clmm::orca_tick_math::{sqrt_price_from_tick_index, tick_index_from_sqrt_price};
 use crate::formula::clmm::raydium_swap_state::add_delta;
@@ -18,13 +18,13 @@ pub fn swap_internal(
         if a_to_b {
             MIN_SQRT_PRICE_X64
         } else {
-            MAX_SQRT_PRICE_X64
+            ORCA_MAX_SQRT_PRICE_X64
         }
     } else {
         sqrt_price_limit
     };
 
-    if !(MIN_SQRT_PRICE_X64..=MAX_SQRT_PRICE_X64).contains(&adjusted_sqrt_price_limit) {
+    if !(MIN_SQRT_PRICE_X64..=ORCA_MAX_SQRT_PRICE_X64).contains(&adjusted_sqrt_price_limit) {
         return Err("ErrorCode::SqrtPriceOutOfBounds");
     }
 
@@ -43,8 +43,8 @@ pub fn swap_internal(
     let protocol_fee_rate = whirlpool.protocol_fee_rate;
     let next_reward_infos = next_whirlpool_reward_infos(whirlpool, timestamp)?;
 
-    let mut amount_remaining: u128 = amount as u128;
-    let mut amount_calculated: u128 = 0;
+    let mut amount_remaining: u64 = amount;
+    let mut amount_calculated: u64 = 0;
     let mut curr_sqrt_price = whirlpool.sqrt_price;
     let mut curr_tick_index = whirlpool.tick_current_index;
     let mut curr_liquidity = whirlpool.liquidity;
@@ -73,7 +73,7 @@ pub fn swap_internal(
             sqrt_price_target,
             curr_liquidity,
             amount_remaining,
-            fee_rate as u128,
+            fee_rate as u32,
             amount_specified_is_input,
             a_to_b,
         )?;
@@ -182,9 +182,9 @@ pub fn swap_internal(
     }
 
     let (amount_a, amount_b) = if a_to_b == amount_specified_is_input {
-        (amount - amount_remaining as u64, amount_calculated as u64)
+        (amount - amount_remaining, amount_calculated)
     } else {
-        (amount_calculated as u64, amount - amount_remaining as u64)
+        (amount_calculated, amount - amount_remaining)
     };
 
     Ok(PostSwapUpdate {

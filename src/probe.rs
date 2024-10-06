@@ -110,6 +110,7 @@ impl Probe {
         println!("fetching accounts...");
         let time = Instant::now();
         let pubkeys = items.iter().map(|item| { item.2 }).collect::<Vec<Pubkey>>();
+        // pubkeys.iter().for_each(|x| { println!("{}", x) });
         let accounts = Self::_fetch_accounts(&rpc_client, &pubkeys);
 
         let fetched_accounts = accounts.iter().enumerate().filter(|(index, account)| {
@@ -152,7 +153,7 @@ impl Probe {
             }
         }).collect::<Vec<DeserializedAccount>>();
 
-        // todo
+        // todo: replace not overwrite
         *bin.lock().unwrap() = fetched_accounts;
         if let Some(publisher) = publisher {
             publisher.lock().unwrap().notify(Event::UpdateAccounts);
@@ -164,14 +165,19 @@ impl Probe {
         rpc_client: &RpcClient,
         pubkeys: &Vec<Pubkey>
     ) -> Vec<Option<Account>> {
-        match rpc_client.get_multiple_accounts(pubkeys) {
-            Ok(accounts) => {
-                Some(accounts)
+        let mut vec: Vec<Option<Account>> = Vec::new();
+
+        pubkeys.chunks(99).for_each(|pubkeys| {
+            match rpc_client.get_multiple_accounts(pubkeys) {
+                Ok(mut accounts) => {
+                    vec.append(accounts.as_mut())
+                }
+                Err(err) => {
+                    eprintln!("failed to fetch pubkeys: {}", err);
+                }
             }
-            Err(err) => {
-                eprintln!("failed to fetch pubkeys");
-                None
-            }
-        }.unwrap_or(vec!())
+        });
+
+        vec
     }
 }

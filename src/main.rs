@@ -39,8 +39,9 @@ async fn main() {
     println!("Hello, world!");
 
     let alchemy = "https://solana-mainnet.g.alchemy.com/v2/76-rZCjoPGCHXLfjHNojk5CiqX8I36AT".to_string();
-    let get_blocks = "https://go.getblock.io/bd8eab2bbe6e448b84ca2ae3b282b819".to_string();
-    let rpc_client = RpcClient::new(get_blocks.clone());
+    // let get_blocks = "https://go.getblock.io/bd8eab2bbe6e448b84ca2ae3b282b819".to_string();
+    let rpc_url = alchemy;
+    let rpc_client = RpcClient::new(rpc_url.clone());
 
     // read pools
     let orca_pools = read_pools("./src/pubkey/orca.json").unwrap();
@@ -61,7 +62,7 @@ async fn main() {
     // hold available path list of mint
     let path_list: Arc<Mutex<HashMap<Pubkey, Vec<DeserializedPoolAccount>>>> = Arc::new(Mutex::new(HashMap::new()));
 
-    let mut probe = Probe::new(get_blocks, Arc::new(Mutex::new(Publisher::default())));
+    let mut probe = Probe::new(rpc_url.clone(), Arc::new(Mutex::new(Publisher::default())));
     // fetch pool pubkeys
     probe.fetch_pool_accounts(Arc::clone(&pool_list), Arc::clone(&pool_account_bin));
 
@@ -82,10 +83,12 @@ async fn main() {
     // collect swap-related pubkeys from pool accounts
     probe.start_watching(Arc::clone(&pool_account_bin), Arc::clone(&shared_account_bin));
     // setup and arbitrage
-    probe.publisher.lock().unwrap().subscribe(Event::UpdateAccounts, Box::new(()));
+    probe.publisher.lock().unwrap().subscribe(Event::UpdateAccounts, || {});
 
+    // todo: put this code into observer function
     let shared_pool_account_bin = Arc::clone(&shared_account_bin);
     let path_list = Arc::clone(&path_list);
+    let rpc_client = RpcClient::new(rpc_url.clone());
     spawn(async move {
         loop {
             let path_list = path_list.lock().unwrap().clone();
@@ -94,43 +97,36 @@ async fn main() {
                 *path.0 == mint
             }).expect(format!("no path for mint: {}", mint).as_str());
 
-            // target.1.iter().for_each(|pool| {
-            //     let related_pubkeys = pool.get_swap_related_pubkeys();
-            //
-            //     let related_accounts = shared_pool_account_bin.lock().unwrap().clone().into_iter().filter(|account| {
-            //         related_pubkeys.iter().find(|(_, pubkey)| {
-            //             *pubkey == account.get_pubkey()
-            //         }).is_some()
-            //     }).collect::<Vec<DeserializedAccount>>();
-            //
-            //     // run only single swap
-            //     if let Some(target_pool) = target.1.iter().find(|pool| {
-            //         pool.operation.get_formula() == Formula::ConcentratedLiquidity && pool.market == RAYDIUM
-            //     }) {
-            //         target_pool.operation.swap(&related_accounts);
-            //     }
-            //
-            //     // target.1.iter().for_each(|pool| {
-            //     //     pool.operation.swap(&related_accounts);
-            //     // });
-            // });
+            target.1.iter().for_each(|pool| {
+                let related_pubkeys = pool.get_swap_related_pubkeys(Some(&rpc_client)).unwrap();
 
-            // single swap test
-            if let Ok(related_pubkeys) = target.1.iter().find(|pool| {
-               pool.market == RAYDIUM && pool.operation.get_formula() == Formula::ConcentratedLiquidity
-            }).unwrap().get_swap_related_pubkeys(Some(&rpc_client)) {
                 let related_accounts = shared_pool_account_bin.lock().unwrap().clone().into_iter().filter(|account| {
                     related_pubkeys.iter().find(|(_, pubkey)| {
                         *pubkey == account.get_pubkey()
                     }).is_some()
                 }).collect::<Vec<DeserializedAccount>>();
 
-                if let Some(target_pool) = target.1.iter().find(|pool| {
-                    pool.market == RAYDIUM && pool.operation.get_formula() == Formula::ConcentratedLiquidity
-                }) {
-                    target_pool.operation.swap(&related_accounts);
-                }
-            }
+                // target.1.iter().for_each(|pool| {
+                //     pool.operation.swap(&related_accounts);
+                // });
+            });
+
+            // single swap test
+            // if let Ok(related_pubkeys) = target.1.iter().find(|pool| {
+            //    pool.market == RAYDIUM && pool.operation.get_formula() == Formula::ConcentratedLiquidity
+            // }).unwrap().get_swap_related_pubkeys(Some(&rpc_client)) {
+            //     let related_accounts = shared_pool_account_bin.lock().unwrap().clone().into_iter().filter(|account| {
+            //         related_pubkeys.iter().find(|(_, pubkey)| {
+            //             *pubkey == account.get_pubkey()
+            //         }).is_some()
+            //     }).collect::<Vec<DeserializedAccount>>();
+            //
+            //     if let Some(target_pool) = target.1.iter().find(|pool| {
+            //         pool.market == RAYDIUM && pool.operation.get_formula() == Formula::ConcentratedLiquidity
+            //     }) {
+            //         target_pool.operation.swap(&related_accounts);
+            //     }
+            // }
 
             let _ = sleep(Duration::from_secs(5)).await;
         }

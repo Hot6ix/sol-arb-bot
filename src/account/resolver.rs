@@ -38,11 +38,7 @@ pub fn resolve_pool_config_account(market: &Market, owner_pubkey: &Pubkey, accou
     match market {
         Market::ORCA => {
             DeserializedConfigAccount::OrcaClmmConfigAccount(
-                OrcaClmmAccount::WhirlpoolsConfig(WhirlpoolsConfigAccount {
-                    pubkey: account_pubkey,
-                    config: WhirlpoolsConfig::unpack_data(data),
-                    market: Market::ORCA,
-                })
+                OrcaClmmAccount::resolve_account(account_pubkey, data)
             )
         }
         Market::RAYDIUM => {

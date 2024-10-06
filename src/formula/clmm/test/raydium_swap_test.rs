@@ -7,7 +7,7 @@ use crate::formula::clmm::u256_math::U1024;
 use crate::r#struct::pools::RaydiumClmmMarket;
 
 #[cfg(test)]
-mod swap_test {
+pub mod swap_test {
     use super::*;
     use std::cell::RefCell;
     use std::collections::HashMap;
@@ -37,7 +37,7 @@ mod swap_test {
         tick_array_states
     }
 
-    fn build_swap_param<'info>(
+    pub fn build_swap_param<'info>(
         tick_current: i32,
         tick_spacing: u16,
         sqrt_price_x64: u128,
@@ -1397,7 +1397,7 @@ mod swap_test {
                 &mut pool_state.borrow_mut(),
                 &mut get_tick_array_states_mut(&tick_array_states),
                 &Some(&bitmap_extension_state),
-                amount_specified as u128,
+                amount_specified,
                 MIN_SQRT_PRICE_X64 + 1,
                 zero_for_one,
                 is_base_input,
@@ -1448,7 +1448,7 @@ mod swap_test {
                 &mut pool_state.borrow_mut(),
                 &mut get_tick_array_states_mut(&tick_array_states),
                 &Some(&bitmap_extension_state),
-                amount_specified as u128,
+                amount_specified,
                 MIN_SQRT_PRICE_X64 + 1,
                 zero_for_one,
                 is_base_input,
@@ -1499,7 +1499,7 @@ mod swap_test {
                 &mut pool_state.borrow_mut(),
                 &mut get_tick_array_states_mut(&tick_array_states),
                 &Some(&bitmap_extension_state),
-                amount_specified as u128,
+                amount_specified,
                 MAX_SQRT_PRICE_X64 - 1,
                 zero_for_one,
                 is_base_input,
@@ -1549,7 +1549,7 @@ mod swap_test {
                 &mut pool_state.borrow_mut(),
                 &mut get_tick_array_states_mut(&tick_array_states),
                 &Some(&bitmap_extension_state),
-                amount_specified as u128,
+                amount_specified,
                 MAX_SQRT_PRICE_X64 - 1,
                 zero_for_one,
                 is_base_input,

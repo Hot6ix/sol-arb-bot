@@ -32,7 +32,7 @@ pub fn sqrt_price_x64_to_price(sqrt_price_x64: &u128, decimal_diff: &i8) -> f64 
 pub fn get_next_sqrt_price_from_input(
     sqrt_price_x64: u128,
     liquidity: u128,
-    amount_in: u128,
+    amount_in: u64,
     zero_for_one: bool,
 ) -> u128 {
     if zero_for_one {
@@ -46,7 +46,7 @@ pub fn get_next_sqrt_price_from_input(
 pub fn get_next_sqrt_price_from_output(
     sqrt_price_x64: u128,
     liquidity: u128,
-    amount_out: u128,
+    amount_out: u64,
     zero_for_one: bool,
 ) -> u128 {
     if zero_for_one {
@@ -60,7 +60,7 @@ pub fn get_next_sqrt_price_from_output(
 pub fn get_next_sqrt_price_from_amount_0_rounding_up(
     sqrt_price_x64: u128,
     liquidity: u128,
-    amount: u128,
+    amount: u64,
     add: bool,
 ) -> u128 {
     if amount == 0 {
@@ -92,7 +92,7 @@ pub fn get_next_sqrt_price_from_amount_0_rounding_up(
 pub fn get_next_sqrt_price_from_amount_1_rounding_down(
     sqrt_price_x64: u128,
     liquidity: u128,
-    amount: u128,
+    amount: u64,
     add: bool,
 ) -> u128 {
     let sqrt_price_x64_bf = BigFloat::from(sqrt_price_x64);
@@ -105,7 +105,7 @@ pub fn get_next_sqrt_price_from_amount_1_rounding_down(
     } else {
         let amount_shifted = BigInt::from(amount) << 64i32; // U256::from(u128::from(amount) << fixed_point_64::RESOLUTION)
         let value = BigFloat::from_str(amount_shifted.to_string().as_str()).unwrap();
-        let quotient = value.div(&liquidity_bf).add(BigFloat::from((value % liquidity_bf > BigFloat::default()) as u8));
+        let quotient = value.div(&liquidity_bf).add(BigFloat::from((value % liquidity_bf > BigFloat::default()) as u8)).floor();
         sqrt_price_x64_bf.sub(&quotient).to_u128().unwrap()
     }
 }

@@ -13,3 +13,8 @@ pub const RAYDIUM_CLMM_AMM_CONFIG: usize = 117;
 pub const RAYDIUM_CLMM_OBSERVATION_KEY: usize = 4483;
 pub const RAYDIUM_CLMM_TICK_ARRAY_STATE: usize = 10240;
 pub const RAYDIUM_CLMM_TICK_ARRAY_BITMAP_EXTENSION: usize = 1832;
+
+
+
+pub const ORCA_CLMM_TICK_ARRAY: usize = 9988;
+pub const ORCA_CLMM_WHIRLPOOL_CONFIG: usize = 108;

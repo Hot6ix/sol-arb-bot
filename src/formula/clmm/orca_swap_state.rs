@@ -1,6 +1,10 @@
+use std::ops::{Add, Div, Mul};
+use arrayref::{array_ref, array_refs};
+use num_traits::ToPrimitive;
 use solana_sdk::pubkey::Pubkey;
-use crate::formula::clmm::constant::{POOL_TICK_ARRAY_BITMAP_SEED, TICK_ARRAY_SEED};
-use crate::formula::clmm::raydium_tick_array::TickArrayState;
+
+use crate::account::account::AccountDataSerializer;
+use crate::formula::clmm::constant::TICK_ARRAY_SEED;
 use crate::r#struct::market::Market;
 use crate::r#struct::pools::WhirlpoolRewardInfo;
 
@@ -212,6 +216,13 @@ impl ProxiedTickArray {
     pub fn is_max_tick_array(&self, tick_spacing: u16) -> bool {
         self.as_ref().is_max_tick_array(tick_spacing)
     }
+
+    pub fn is_initialized(&self) -> bool {
+        match self {
+            ProxiedTickArray::Initialized(_) => { true }
+            ProxiedTickArray::Uninitialized(_) => { false }
+        }
+    }
 }
 
 impl<'a> AsRef<dyn TickArrayType + 'a> for ProxiedTickArray {
@@ -262,11 +273,25 @@ pub struct TickArrayAccount {
     pub tick_array: TickArray
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct TickArray {
     pub start_tick_index: i32,
     pub ticks: [Tick; TICK_ARRAY_SIZE_USIZE],
     pub whirlpool: Pubkey,
+}
+
+impl AccountDataSerializer for TickArray {
+    fn unpack_data(data: &Vec<u8>) -> Self {
+        let src = array_ref![data, 0, 9988];
+        let (discriminator, start_tick_index, ticks, whirlpool) =
+            array_refs![src, 8, 4, 9944, 32];
+
+        TickArray {
+            start_tick_index: i32::from_le_bytes(*start_tick_index),
+            ticks: Tick::unpack_data_set(*ticks),
+            whirlpool: Pubkey::new_from_array(*whirlpool),
+        }
+    }
 }
 
 impl TickArrayType for TickArray {
@@ -363,7 +388,7 @@ impl TickArray {
             &[
                 TICK_ARRAY_SEED.as_bytes(),
                 pool_id.as_ref(),
-                tick.to_string().as_ref()
+                tick.to_string().as_bytes()
             ],
             program_id
         ) {
@@ -437,7 +462,7 @@ impl TickArrayType for ZeroedTickArray {
 
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub struct Tick {
-    // Total 137 bytes
+    // Total 113 bytes
     pub initialized: bool,     // 1
     pub liquidity_net: i128,   // 16
     pub liquidity_gross: u128, // 16
@@ -449,6 +474,24 @@ pub struct Tick {
 
     // Array of Q64.64
     pub reward_growths_outside: [u128; NUM_REWARDS], // 48 = 16 * 3
+}
+
+impl AccountDataSerializer for Tick {
+    fn unpack_data(data: &Vec<u8>) -> Self {
+        let src = array_ref![data, 0, 113];
+        let (initialized, liquidity_net, liquidity_gross, fee_growth_outside_a, fee_growth_outside_b, reward_growths_outside) =
+            array_refs![src, 1, 16, 16, 16, 16, 48];
+
+        Tick {
+            // todo
+            initialized: true,
+            liquidity_net: i128::from_le_bytes(*liquidity_net),
+            liquidity_gross: u128::from_le_bytes(*liquidity_gross),
+            fee_growth_outside_a: u128::from_le_bytes(*fee_growth_outside_a),
+            fee_growth_outside_b: u128::from_le_bytes(*fee_growth_outside_b),
+            reward_growths_outside: bytemuck::cast(*reward_growths_outside),
+        }
+    }
 }
 
 impl Tick {
@@ -471,6 +514,16 @@ impl Tick {
         self.fee_growth_outside_a = update.fee_growth_outside_a;
         self.fee_growth_outside_b = update.fee_growth_outside_b;
         self.reward_growths_outside = update.reward_growths_outside;
+    }
+
+    pub fn unpack_data_set(data: [u8; 9944]) -> [Tick; 88] {
+        let mut vec: Vec<Tick> = Vec::new();
+
+        data.chunks_exact(113).for_each(|array| {
+            vec.push(Tick::unpack_data(&array.to_vec()))
+        });
+
+        vec.try_into().unwrap()
     }
 }
 
@@ -529,7 +582,6 @@ pub trait TickArrayType {
 }
 
 fn get_offset(tick_index: i32, start_tick_index: i32, tick_spacing: u16) -> isize {
-    // TODO: replace with i32.div_floor once not experimental
     let lhs = tick_index - start_tick_index;
     let rhs = tick_spacing as i32;
     let d = lhs / rhs;
@@ -587,6 +639,52 @@ pub fn checked_mul_div_round_up_if(
     let n = p / d;
 
     Ok(if round_up && p % d > 0 { n + 1 } else { n })
+}
+
+pub fn get_start_tick_index(
+    tick_index: i32,
+    tick_spacing: u16,
+    offset: i32
+) -> i32 {
+    let real_index = f64::from(tick_index).div(f64::from(tick_spacing)).div(f64::from(TICK_ARRAY_SIZE)).floor().to_i32().unwrap();
+
+    let tick_spacing = i32::from(tick_spacing);
+    let tick_array_size = i32::from(TICK_ARRAY_SIZE);
+    let start_tick_index = (real_index + offset).mul(tick_spacing).mul(tick_array_size);
+
+    let ticks_in_array = tick_array_size * tick_spacing;
+    let min_tick_index = MIN_TICK_INDEX - ((MIN_TICK_INDEX % ticks_in_array) + ticks_in_array);
+    assert!(start_tick_index >= min_tick_index);
+    assert!(start_tick_index <= MAX_TICK_INDEX);
+
+    start_tick_index
+}
+
+pub fn get_tick_array_public_keys_with_start_tick_index(
+    tick_current_index: i32,
+    tick_spacing: u16,
+    a_to_b: bool,
+    program_id: &Pubkey,
+    pool_id: &Pubkey
+) -> Vec<Pubkey> {
+    let shift = if a_to_b { 0 } else { tick_spacing } as i32;
+    let mut offset = 0;
+    let mut tick_array_list: Vec<Pubkey> = Vec::new();
+
+    for i in 0.. 3 {
+        let start_tick_index = get_start_tick_index(
+            tick_current_index.add(shift),
+            tick_spacing,
+            offset
+        );
+
+        let tick_array_pubkey = TickArray::key(program_id, pool_id, start_tick_index).unwrap();
+        tick_array_list.push(tick_array_pubkey);
+
+        offset = if a_to_b { offset - 1 } else { offset + 1 }
+    }
+
+    tick_array_list
 }
 
 // #[cfg(test)]
@@ -647,5 +745,55 @@ pub mod tick_builder {
                 reward_growths_outside: self.reward_growths_outside,
             }
         }
+    }
+}
+
+#[cfg(test)]
+pub mod test {
+    use std::str::FromStr;
+    use solana_sdk::pubkey::Pubkey;
+    use crate::formula::clmm::orca_swap_state::{get_tick_array_public_keys_with_start_tick_index, TICK_ARRAY_SIZE, TickArray};
+
+    #[test]
+    pub fn pubkey_test() {
+        let orca_owner = Pubkey::from_str("whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc").unwrap();
+        let orca_sol_usdc_clmm = Pubkey::from_str("Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE").unwrap();
+        let market_tick_index_list = vec![
+            0,
+            -19441,
+            -19447,
+            -19460,
+            -19475,
+            -19500,
+        ];
+        let zero_for_one = false;
+        let direction = if zero_for_one { 1 } else { -1 };
+        let tick_spacing = 4;
+
+        let res = get_tick_array_public_keys_with_start_tick_index(
+            -19441,
+            tick_spacing,
+            true,
+            &orca_owner,
+            &orca_sol_usdc_clmm
+        );
+
+        res.iter().for_each(|x| {
+            println!("{}", x)
+        })
+        // for i in 0..5 {
+        //     let target_tick = market_tick_index_list[i] + direction * (tick_spacing * TICK_ARRAY_SIZE) * i as i32;
+        //     // let target_tick = market_tick_index_list[i] + direction * (tick_spacing * TICK_ARRAY_SIZE) * i as i32;
+        //     let tick_array_pubkey = TickArray::key(
+        //         &orca_owner,
+        //         &orca_sol_usdc_clmm,
+        //         target_tick
+        //     );
+        //
+        //     println!("tick_index: {}, target_tick: {}", market_tick_index_list[i], target_tick);
+        //     println!("{:?}", tick_array_pubkey)
+        // }
+
+        // assert_eq!(tick_array_pubkey.unwrap().to_string(), "EP2GupuiKh6bHLXD6Uv6pj2vT7t34fVvfefgALNLNQjt");
     }
 }

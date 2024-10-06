@@ -14,12 +14,12 @@ pub fn swap_internal(
     pool_state: &mut RaydiumClmmMarket,
     tick_array_states: &mut VecDeque<TickArrayState>,
     tick_array_bitmap_extension: &Option<&TickArrayBitmapExtension>,
-    amount_specified: u128,
+    amount_specified: u64,
     sqrt_price_limit_x64: u128,
     zero_for_one: bool,
     is_base_input: bool,
 ) -> Result<(u64, u64), &'static str> {
-    if amount_specified == 0u128 {
+    if amount_specified == 0u64 {
         return Err("Zero amount specified")
     }
 
@@ -152,7 +152,7 @@ pub fn swap_internal(
             target_price,
             state.liquidity,
             state.amount_specified_remaining,
-            u128::from(amm_config.trade_fee_rate),
+            amm_config.trade_fee_rate,
             is_base_input,
             zero_for_one
         )?;
@@ -201,25 +201,23 @@ pub fn swap_internal(
         let step_fee_amount = step.fee_amount;
 
         if amm_config.protocol_fee_rate > 0 {
-            let delta = U128::from(step_fee_amount)
-                .checked_mul(U128::from(amm_config.protocol_fee_rate))
+            let delta = u64::from(step_fee_amount)
+                .checked_mul(u64::from(amm_config.protocol_fee_rate))
                 .unwrap()
-                .checked_div(U128::from(FEE_RATE_DENOMINATOR_VALUE))
-                .unwrap()
-                .to_little_endian();
-            step.fee_amount = step.fee_amount.checked_sub(u128::from_le_bytes(delta)).unwrap();
-            state.protocol_fee = state.protocol_fee.checked_add(u128::from_le_bytes(delta)).unwrap();
+                .checked_div(u64::from(FEE_RATE_DENOMINATOR_VALUE))
+                .unwrap();
+            step.fee_amount = step.fee_amount.checked_sub(delta).unwrap();
+            state.protocol_fee = state.protocol_fee.checked_add(delta).unwrap();
         }
 
         if amm_config.fund_fee_rate > 0 {
-            let delta = U128::from(step_fee_amount)
-                .checked_mul(U128::from(amm_config.fund_fee_rate))
+            let delta = u64::from(step_fee_amount)
+                .checked_mul(u64::from(amm_config.fund_fee_rate))
                 .unwrap()
-                .checked_div(U128::from(FEE_RATE_DENOMINATOR_VALUE))
-                .unwrap()
-                .to_little_endian();
-            step.fee_amount = step.fee_amount.checked_sub(u128::from_le_bytes(delta)).unwrap();
-            state.fund_fee = state.fund_fee.checked_add(u128::from_le_bytes(delta)).unwrap();
+                .checked_div(u64::from(FEE_RATE_DENOMINATOR_VALUE))
+                .unwrap();
+            step.fee_amount = step.fee_amount.checked_sub(delta).unwrap();
+            state.fund_fee = state.fund_fee.checked_add(delta).unwrap();
         }
 
         if state.liquidity > 0 {

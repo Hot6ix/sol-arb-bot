@@ -1167,13 +1167,14 @@ mod swap_liquidity_tests {
     }
 
     // todo
+    // since get_delta_amount_0_unsigned() does not make Error(MultiplicationShiftRightOverflow)
     #[test]
     #[should_panic(expected = "MultiplicationShiftRightOverflow")]
     fn max_l_at_max_tick_b_to_a() {
         let swap_test_info = SwapTestFixture::new(SwapTestFixtureInfo {
             tick_spacing: TS_128,
             liquidity: u64::MAX as u128,
-            curr_tick_index: 442500, // c1
+            curr_tick_index: 442500,
             start_tick_index: 442368,
             trade_amount: 100_000,
             sqrt_price_limit: sqrt_price_from_tick_index(443636),
@@ -1580,11 +1581,6 @@ mod swap_sqrt_price_tests {
 
     #[test]
     #[should_panic(expected = "SqrtPriceOutOfBounds")]
-    /// A swap with the price limit over the max price limit.
-    /// |__p1_____p1_____c1___max|...limit|
-    ///
-    /// Expectation:
-    /// Fail on out of bounds sqrt-price-limit.
     fn sqrt_price_limit_over_max_tick() {
         let swap_test_info = SwapTestFixture::new(SwapTestFixtureInfo {
             tick_spacing: TS_128,
@@ -1803,6 +1799,7 @@ mod swap_sqrt_price_tests {
         assert_swap(
             &post_swap,
             &SwapTestExpectation {
+                // traded_amount_a: 613293650978,
                 traded_amount_a: 613293650976,
                 traded_amount_b: 100,
                 end_tick_index: -225397,

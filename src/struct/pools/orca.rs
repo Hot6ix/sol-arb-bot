@@ -1,13 +1,14 @@
 use std::any::Any;
+
 use arrayref::{array_ref, array_refs};
 use solana_sdk::pubkey::Pubkey;
-use crate::account::account::{AccountDataSerializer, DeserializedAccount, DeserializedConfigAccount, DeserializedDataAccount, DeserializedTokenAccount};
-use crate::r#struct::market::{Market, PoolOperation};
+
+use crate::account::account::{AccountDataSerializer, DeserializedAccount, DeserializedConfigAccount, DeserializedTokenAccount};
+use crate::constants::*;
 use crate::formula::base::Formula;
 use crate::formula::base::Formula::ConcentratedLiquidity;
-use crate::formula::clmm::orca_swap_state::{ProxiedTickArray, SwapTickSequence, TickArrayAccount};
-use crate::formula::orca_clmm::swap_internal;
-use crate::r#struct::pools::RaydiumClmmMarket;
+use crate::formula::clmm::orca_swap_state::{ProxiedTickArray, TickArray, TickArrayAccount};
+use crate::r#struct::market::{Market, PoolOperation};
 use crate::utils::PubkeyPair;
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -92,8 +93,9 @@ impl PoolOperation for OrcaClmmMarket {
 
     fn swap(&self, accounts: &Vec<DeserializedAccount>) {
         let amount = 0u64;
-        let a_to_b = true;
-        let amount_specified_is_input = true;
+        let a_to_b = true; // equivalent to zero_for_one
+        let amount_specified_is_input = true; // equivalent to is_base_input
+
         let mut market = OrcaClmmMarket::default();
         let mut tick_array_list: Vec<ProxiedTickArray> = Vec::new();
         let mut whirl_pools_config = WhirlpoolsConfig::default();
@@ -129,6 +131,13 @@ impl PoolOperation for OrcaClmmMarket {
             }
         });
 
+        // tick_array_list.sort_by(|x1, x2| {
+        //     if x1.is_initialized() && x2.is_initialized() {
+        //
+        //     }
+        //
+        // })
+        //
         // swap_internal(
         //     market,
         //     SwapTickSequence::new(),
@@ -137,7 +146,7 @@ impl PoolOperation for OrcaClmmMarket {
         //     amount_specified_is_input,
         //     a_to_b,
         //     064
-        // ).expect("TODO: panic message");
+        // ).expect("swap failed");
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -205,9 +214,9 @@ pub struct WhirlpoolsConfig {
 
 impl AccountDataSerializer for WhirlpoolsConfig {
     fn unpack_data(data: &Vec<u8>) -> Self {
-        let src = array_ref![data, 0, 98];
-        let (fee_authority, collect_protocol_fees_authority, reward_emissions_super_authority, default_protocol_fee_rate) =
-            array_refs![src, 32, 32, 32, 2];
+        let src = array_ref![data, 0, 108];
+        let (discriminator, fee_authority, collect_protocol_fees_authority, reward_emissions_super_authority, default_protocol_fee_rate, _) =
+            array_refs![src, 8, 32, 32, 32, 2, 2];
 
         WhirlpoolsConfig {
             fee_authority: Pubkey::new_from_array(*fee_authority),
@@ -239,12 +248,35 @@ impl OrcaClmmAccount {
     pub fn get_market(&self) -> Market {
         Market::ORCA
     }
+
+    pub fn resolve_account(pubkey: Pubkey, data: &Vec<u8>) -> OrcaClmmAccount {
+        match data.len() {
+            ORCA_CLMM_TICK_ARRAY => {
+                OrcaClmmAccount::TickArray(TickArrayAccount {
+                    pubkey,
+                    market: Market::ORCA,
+                    tick_array: TickArray::unpack_data(data),
+                })
+            }
+            ORCA_CLMM_WHIRLPOOL_CONFIG => {
+                OrcaClmmAccount::WhirlpoolsConfig(WhirlpoolsConfigAccount {
+                    pubkey,
+                    market: Market::ORCA,
+                    config: WhirlpoolsConfig::unpack_data(data),
+                })
+            }
+            _ => {
+                panic!("could not resolve account from data: pubkey({})", pubkey)
+            }
+        }
+    }
 }
 
 // todo
-#[cfg(test)]
+// #[cfg(test)]
 pub mod whirlpool_builder {
     use crate::formula::clmm::orca_swap_state::NUM_REWARDS;
+
     use super::{OrcaClmmMarket, WhirlpoolRewardInfo};
 
     #[derive(Default)]

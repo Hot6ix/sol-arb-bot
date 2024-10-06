@@ -1,11 +1,11 @@
 use std::mem::swap;
-
+use std::num::TryFromIntError;
 use num_bigfloat::BigFloat;
-
+use num_traits::ToPrimitive;
 use crate::formula::clmm::full_math::MulDiv;
 use crate::formula::clmm::raydium_sqrt_price_math::Q64;
 use crate::formula::clmm::raydium_tick_math::get_sqrt_price_at_tick;
-use crate::formula::clmm::u256_math::U128;
+use crate::formula::clmm::u256_math::{U128, U256};
 
 /*
     For Raydium Concentrated Liquidity pool
@@ -14,14 +14,14 @@ use crate::formula::clmm::u256_math::U128;
 
 #[derive(Debug)]
 pub struct SwapState {
-    pub amount_specified_remaining: u128,
-    pub amount_calculated: u128,
+    pub amount_specified_remaining: u64,
+    pub amount_calculated: u64,
     pub sqrt_price_x64: u128,
     pub tick: i32,
     // pub fee_growth_global_x64: u128,
-    pub fee_amount: u128,
-    pub protocol_fee: u128,
-    pub fund_fee: u128,
+    pub fee_amount: u64,
+    pub protocol_fee: u64,
+    pub fund_fee: u64,
     pub liquidity: u128,
 }
 
@@ -31,9 +31,9 @@ pub struct StepComputations {
     pub tick_next: i32,
     pub initialized: bool,
     pub sqrt_price_next_x64: u128,
-    pub amount_in: u128,
-    pub amount_out: u128,
-    pub fee_amount: u128,
+    pub amount_in: u64,
+    pub amount_out: u64,
+    pub fee_amount: u64,
 }
 
 pub fn calculate_amount_in_range(
@@ -42,7 +42,7 @@ pub fn calculate_amount_in_range(
     liquidity: u128,
     zero_for_one: bool,
     is_base_input: bool,
-) -> u128 {
+) -> Result<u64, TryFromIntError> {
     if is_base_input {
         if zero_for_one {
             get_delta_amount_0_unsigned(
@@ -160,7 +160,7 @@ pub fn get_delta_amount_0_unsigned(
     mut sqrt_ratio_b_x64: u128,
     liquidity: u128,
     round_up: bool,
-) -> u128 {
+) -> Result<u64, TryFromIntError> {
     if sqrt_ratio_a_x64 > sqrt_ratio_b_x64 {
         swap(&mut sqrt_ratio_a_x64, &mut sqrt_ratio_b_x64)
     }
@@ -170,10 +170,16 @@ pub fn get_delta_amount_0_unsigned(
     let num2 = BigFloat::from(sqrt_ratio_b_x64 - sqrt_ratio_a_x64);
 
     if round_up {
-        num1.mul(&num2).div(&BigFloat::from(sqrt_ratio_b_x64)).ceil().div(&BigFloat::from(sqrt_ratio_a_x64)).ceil().to_u128().unwrap()
+        let res = u64::try_from(
+            num1.mul(&num2).div(&BigFloat::from(sqrt_ratio_b_x64)).ceil().div(&BigFloat::from(sqrt_ratio_a_x64)).ceil().to_u128().unwrap()
+        );
+        res
     }
     else {
-        num1.mul(&num2).div(&BigFloat::from(sqrt_ratio_b_x64)).floor().div(&BigFloat::from(sqrt_ratio_a_x64)).to_u128().unwrap()
+        let res = u64::try_from(
+            num1.mul(&num2).div(&BigFloat::from(sqrt_ratio_b_x64)).floor().div(&BigFloat::from(sqrt_ratio_a_x64)).to_u128().unwrap()
+        );
+        res
     }
 }
 
@@ -182,23 +188,27 @@ pub fn get_delta_amount_1_unsigned(
     mut sqrt_ratio_b_x64: u128,
     liquidity: u128,
     round_up: bool,
-) -> u128 {
+) -> Result<u64, TryFromIntError> {
     if sqrt_ratio_a_x64 > sqrt_ratio_b_x64 {
         swap(&mut sqrt_ratio_a_x64, &mut sqrt_ratio_b_x64)
     }
 
     let q64 = BigFloat::from(Q64);
     if round_up {
-        BigFloat::from(liquidity).mul(&BigFloat::from(sqrt_ratio_b_x64).sub(&BigFloat::from(sqrt_ratio_a_x64)))
-            .div(&q64)
-            .ceil()
-            .to_u128().unwrap()
+        u64::try_from(
+            BigFloat::from(liquidity).mul(&BigFloat::from(sqrt_ratio_b_x64).sub(&BigFloat::from(sqrt_ratio_a_x64)))
+                .div(&q64)
+                .ceil()
+                .to_u128().unwrap()
+        )
     }
     else {
-        BigFloat::from(liquidity).mul(&BigFloat::from(sqrt_ratio_b_x64).sub(&BigFloat::from(sqrt_ratio_a_x64)))
-            .div(&q64)
-            .floor()
-            .to_u128().unwrap()
+        u64::try_from(
+            BigFloat::from(liquidity).mul(&BigFloat::from(sqrt_ratio_b_x64).sub(&BigFloat::from(sqrt_ratio_a_x64)))
+                .div(&q64)
+                .floor()
+                .to_u128().unwrap()
+        )
     }
 }
 
@@ -206,21 +216,21 @@ pub fn get_delta_amount_0_signed(
     sqrt_ratio_a_x64: u128,
     sqrt_ratio_b_x64: u128,
     liquidity: i128,
-) -> Result<u128, &'static str> {
+) -> Result<u64, TryFromIntError> {
     if liquidity < 0 {
-        Ok(get_delta_amount_0_unsigned(
+        get_delta_amount_0_unsigned(
             sqrt_ratio_a_x64,
             sqrt_ratio_b_x64,
             u128::try_from(-liquidity).unwrap(),
             false,
-        ))
+        )
     } else {
-        Ok(get_delta_amount_0_unsigned(
+        get_delta_amount_0_unsigned(
             sqrt_ratio_a_x64,
             sqrt_ratio_b_x64,
             u128::try_from(liquidity).unwrap(),
             true,
-        ))
+        )
     }
 }
 
@@ -229,21 +239,21 @@ pub fn get_delta_amount_1_signed(
     sqrt_ratio_a_x64: u128,
     sqrt_ratio_b_x64: u128,
     liquidity: i128,
-) -> Result<u128, &'static str> {
+) -> Result<u64, TryFromIntError> {
     if liquidity < 0 {
-        Ok(get_delta_amount_1_unsigned(
+        get_delta_amount_1_unsigned(
             sqrt_ratio_a_x64,
             sqrt_ratio_b_x64,
             u128::try_from(-liquidity).unwrap(),
             false,
-        ))
+        )
     } else {
-        Ok(get_delta_amount_1_unsigned(
+        get_delta_amount_1_unsigned(
             sqrt_ratio_a_x64,
             sqrt_ratio_b_x64,
             u128::try_from(liquidity).unwrap(),
             true,
-        ))
+        )
     }
 }
 
@@ -253,7 +263,7 @@ pub fn get_delta_amounts_signed(
     tick_lower: i32,
     tick_upper: i32,
     liquidity_delta: i128,
-) -> Result<(u128, u128), &'static str> {
+) -> Result<(u64, u64), &'static str> {
     let mut amount_0 = 0;
     let mut amount_1 = 0;
     if tick_current < tick_lower {

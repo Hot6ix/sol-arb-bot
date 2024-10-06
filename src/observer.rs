@@ -11,11 +11,11 @@ pub type ClosureSubscriber = dyn FnOnce() -> ();
 
 #[derive(Default, Clone)]
 pub struct Publisher {
-    events: HashMap<Event, Vec<ClosureSubscriber>>
+    events: HashMap<Event, Vec<Subscriber>>
 }
 
 impl Publisher {
-    pub fn subscribe(&mut self, event: Event, listener: Box<ClosureSubscriber>) {
+    pub fn subscribe(&mut self, event: Event, listener: Subscriber) {
         self.events.entry(event.clone()).or_default();
         if let Some(events) = self.events.get_mut(&event) {
             events.push(listener);

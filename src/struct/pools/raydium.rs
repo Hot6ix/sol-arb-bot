@@ -147,6 +147,10 @@ impl PoolOperation for RaydiumClmmMarket {
     }
 
     fn swap(&self, accounts: &Vec<DeserializedAccount>) {
+        let amount = 0u64;
+        let zero_for_one = true; // equivalent to a_to_b
+        let is_base_input = true; // equivalent to amount_specified_is_input
+
         let mut market = RaydiumClmmMarket::default();
         let mut amm_config = AmmConfig::default();
         let mut tick_array_states: VecDeque<TickArrayState> = VecDeque::new();
@@ -191,10 +195,10 @@ impl PoolOperation for RaydiumClmmMarket {
             &mut market,
             &mut tick_array_states,
             &Some(&tick_array_bitmap_extension),
-            0u128,
+            amount,
             sqrt_price_x64,
-            false,
-            false
+            zero_for_one,
+            is_base_input
         ).expect("swap failed");
     }
 
@@ -284,7 +288,8 @@ impl RaydiumClmmMarket {
         }
         let next_start_index = self.next_initialized_tick_array_start_index(
             tick_array_bitmap_extension,
-            TickArrayState::get_array_start_index(self.tick_current, self.tick_spacing),
+            TickArrayState::get_array_start_index(
+                self.tick_current, self.tick_spacing),
             zero_for_one,
         )?;
         return Ok((false, next_start_index.unwrap()))
