@@ -1,13 +1,14 @@
 use std::any::Any;
+use std::collections::VecDeque;
 
 use arrayref::{array_ref, array_refs};
 use solana_sdk::pubkey::Pubkey;
 
-use crate::account::account::{AccountDataSerializer, DeserializedAccount, DeserializedConfigAccount, DeserializedTokenAccount};
 use crate::constants::*;
 use crate::formula::base::Formula;
 use crate::formula::base::Formula::ConcentratedLiquidity;
 use crate::formula::clmm::orca_swap_state::{ProxiedTickArray, TickArray, TickArrayAccount};
+use crate::r#struct::account::{AccountDataSerializer, DeserializedAccount, DeserializedConfigAccount, DeserializedTokenAccount};
 use crate::r#struct::market::{Market, PoolOperation};
 use crate::utils::PubkeyPair;
 
@@ -131,13 +132,15 @@ impl PoolOperation for OrcaClmmMarket {
             }
         });
 
-        // tick_array_list.sort_by(|x1, x2| {
-        //     if x1.is_initialized() && x2.is_initialized() {
-        //
-        //     }
-        //
-        // })
-        //
+        let mut tick_array_list = tick_array_list.into_iter().filter(|tick_array_state| {
+            if a_to_b {
+                tick_array_state.start_tick_index() >= market.tick_current_index
+            }
+            else {
+                tick_array_state.start_tick_index() <= market.tick_current_index
+            }
+        }).collect::<VecDeque<ProxiedTickArray>>();
+
         // swap_internal(
         //     market,
         //     SwapTickSequence::new(),

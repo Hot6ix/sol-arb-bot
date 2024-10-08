@@ -5,9 +5,13 @@ use std::io::BufReader;
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
+use num_enum::TryFromPrimitive;
+use num_integer::Integer;
 use serde::Deserialize;
+use serde_json::Value::Array;
 use solana_sdk::pubkey::Pubkey;
 use crate::r#struct::market::Market;
+use crate::r#struct::pools::RaydiumRewardInfo;
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct PubkeyPair {

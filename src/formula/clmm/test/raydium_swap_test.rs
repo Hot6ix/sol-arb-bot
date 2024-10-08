@@ -14,7 +14,6 @@ pub mod swap_test {
     use std::str::FromStr;
     use std::vec;
     use solana_sdk::pubkey::Pubkey;
-    use crate::account::account::AccountDataSerializer;
     use crate::formula::clmm::constant::{POOL_TICK_ARRAY_BITMAP_SEED};
     use crate::formula::clmm::raydium_swap_state::{add_delta, get_delta_amounts_signed, get_liquidity_from_amounts};
     use crate::formula::clmm::raydium_tick_array::{TickArrayBitmapExtension, TickArrayState, TickState};
@@ -22,6 +21,7 @@ pub mod swap_test {
     use crate::formula::clmm::raydium_tick_math::get_sqrt_price_at_tick;
     use crate::formula::clmm::test::raydium_swap_test::pool_test::build_pool;
     use crate::formula::raydium_clmm::swap_internal;
+    use crate::r#struct::account::AccountDataSerializer;
     use crate::r#struct::pools::{AmmConfig, RaydiumClmmMarket, RaydiumRewardInfo};
 
     const PROGRAM_ID: &str = "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK";
@@ -1687,31 +1687,31 @@ pub mod pool_test {
             let mut pool_state = RaydiumClmmMarket::default();
             pool_state.tick_spacing = 60;
             // -443580 is the min tick can use to open a position when tick_spacing is 60 due to MIN_TICK is -443636
-            assert!(pool_state.is_overflow_default_tickarray_bitmap(vec![-443580]) == false);
+            assert!(pool_state.is_overflow_default_tick_array_bitmap(vec![-443580]) == false);
             // 443580 is the min tick can use to open a position when tick_spacing is 60 due to MAX_TICK is 443636
-            assert!(pool_state.is_overflow_default_tickarray_bitmap(vec![443580]) == false);
+            assert!(pool_state.is_overflow_default_tick_array_bitmap(vec![443580]) == false);
 
             pool_state.tick_spacing = 10;
-            assert!(pool_state.is_overflow_default_tickarray_bitmap(vec![-307200]) == false);
-            assert!(pool_state.is_overflow_default_tickarray_bitmap(vec![-307201]) == true);
-            assert!(pool_state.is_overflow_default_tickarray_bitmap(vec![307200]) == true);
-            assert!(pool_state.is_overflow_default_tickarray_bitmap(vec![307199]) == false);
+            assert!(pool_state.is_overflow_default_tick_array_bitmap(vec![-307200]) == false);
+            assert!(pool_state.is_overflow_default_tick_array_bitmap(vec![-307201]) == true);
+            assert!(pool_state.is_overflow_default_tick_array_bitmap(vec![307200]) == true);
+            assert!(pool_state.is_overflow_default_tick_array_bitmap(vec![307199]) == false);
 
             pool_state.tick_spacing = 1;
-            assert!(pool_state.is_overflow_default_tickarray_bitmap(vec![-30720]) == false);
-            assert!(pool_state.is_overflow_default_tickarray_bitmap(vec![-30721]) == true);
-            assert!(pool_state.is_overflow_default_tickarray_bitmap(vec![30720]) == true);
-            assert!(pool_state.is_overflow_default_tickarray_bitmap(vec![30719]) == false);
+            assert!(pool_state.is_overflow_default_tick_array_bitmap(vec![-30720]) == false);
+            assert!(pool_state.is_overflow_default_tick_array_bitmap(vec![-30721]) == true);
+            assert!(pool_state.is_overflow_default_tick_array_bitmap(vec![30720]) == true);
+            assert!(pool_state.is_overflow_default_tick_array_bitmap(vec![30719]) == false);
         }
     }
 
     mod use_tick_array_bitmap_extension_test {
 
         use std::ops::Deref;
-        use crate::account::account::AccountDataSerializer;
         use crate::formula::clmm::constant::{POOL_TICK_ARRAY_BITMAP_SEED, TICK_ARRAY_SIZE};
         use crate::formula::clmm::raydium_tick_array::tick_array_bitmap_extension_test::{build_tick_array_bitmap_extension_info, BuildExtensionAccountInfo};
         use crate::formula::clmm::raydium_tick_math::get_sqrt_price_at_tick;
+        use crate::r#struct::account::AccountDataSerializer;
         use super::*;
 
         #[test]
@@ -1750,7 +1750,7 @@ pub mod pool_test {
             ];
 
             for start_index in &init_tick_array_start_index {
-                if pool_state.is_overflow_default_tickarray_bitmap(vec![*start_index]) {
+                if pool_state.is_overflow_default_tick_array_bitmap(vec![*start_index]) {
                     extension.flip_tick_array_bit(*start_index, pool_state.tick_spacing);
                 }
                 else {
@@ -1831,7 +1831,7 @@ pub mod pool_test {
                 ];
 
                 for start_index in &init_tick_array_start_index {
-                    if pool_state.is_overflow_default_tickarray_bitmap(vec![*start_index]) {
+                    if pool_state.is_overflow_default_tick_array_bitmap(vec![*start_index]) {
                         extension.flip_tick_array_bit(*start_index, pool_state.tick_spacing);
                     }
                     else {
@@ -1931,7 +1931,7 @@ pub mod pool_test {
                 ];
 
                 for start_index in &init_tick_array_start_index {
-                    if pool_state.is_overflow_default_tickarray_bitmap(vec![*start_index]) {
+                    if pool_state.is_overflow_default_tick_array_bitmap(vec![*start_index]) {
                         extension.flip_tick_array_bit(*start_index, pool_state.tick_spacing);
                     }
                     else {
@@ -2021,7 +2021,7 @@ pub mod pool_test {
                 ];
 
                 for start_index in &init_tick_array_start_index {
-                    if pool_state.is_overflow_default_tickarray_bitmap(vec![*start_index]) {
+                    if pool_state.is_overflow_default_tick_array_bitmap(vec![*start_index]) {
                         extension.flip_tick_array_bit(*start_index, pool_state.tick_spacing);
                     }
                     else {
@@ -2080,7 +2080,7 @@ pub mod pool_test {
                 ];
 
                 for start_index in &init_tick_array_start_index {
-                    if pool_state.is_overflow_default_tickarray_bitmap(vec![*start_index]) {
+                    if pool_state.is_overflow_default_tick_array_bitmap(vec![*start_index]) {
                         extension.flip_tick_array_bit(*start_index, pool_state.tick_spacing);
                     }
                     else {
@@ -2119,7 +2119,7 @@ pub mod pool_test {
                 let init_tick_array_start_index = vec![];
 
                 for start_index in &init_tick_array_start_index {
-                    if pool_state.is_overflow_default_tickarray_bitmap(vec![*start_index]) {
+                    if pool_state.is_overflow_default_tick_array_bitmap(vec![*start_index]) {
                         extension.flip_tick_array_bit(*start_index, pool_state.tick_spacing);
                     }
                     else {
@@ -2186,7 +2186,7 @@ pub mod pool_test {
                 ];
 
                 for start_index in &init_tick_array_start_index {
-                    if pool_state.is_overflow_default_tickarray_bitmap(vec![*start_index]) {
+                    if pool_state.is_overflow_default_tick_array_bitmap(vec![*start_index]) {
                         extension.flip_tick_array_bit(*start_index, pool_state.tick_spacing);
                     }
                     else {

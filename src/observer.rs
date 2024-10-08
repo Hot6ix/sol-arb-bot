@@ -1,13 +1,13 @@
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 
-#[derive(Eq, PartialEq, Hash, Clone)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Event {
+    Initialized,
     UpdateAccounts
 }
 
 pub type Subscriber = fn();
-
-pub type ClosureSubscriber = dyn FnOnce() -> ();
 
 #[derive(Default, Clone)]
 pub struct Publisher {
@@ -30,7 +30,7 @@ impl Publisher {
 
     pub fn notify(&self, event: Event) {
         if let Some(listeners) = &self.events.get(&event) {
-            listeners.iter().for_each(|subscriber| {
+            listeners.iter().for_each(|&subscriber| {
                 subscriber()
             })
         }

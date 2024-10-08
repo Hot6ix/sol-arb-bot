@@ -4,8 +4,8 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use solana_sdk::pubkey::Pubkey;
 use tokio::time::Instant;
-use crate::account::account::DeserializedPoolAccount;
 use crate::constants::MAX_DEPTH;
+use crate::r#struct::account::DeserializedPoolAccount;
 use crate::r#struct::market::Market;
 
 pub struct PathFinder {

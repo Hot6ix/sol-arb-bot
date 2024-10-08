@@ -21,12 +21,8 @@ impl ConstantProductBase for DefaultConstantProduct {
     fn swap(&self, amount_in: u64, zero_for_one: bool) -> BigFloat {
         let fee = BigFloat::from(self.calculate_fee(amount_in));
 
-        println!("{}", self.token_a_amount);
-        println!("{}", self.token_b_amount);
         let amount_in_with_fee = BigFloat::from(amount_in).sub(fee);
         let amount_out = (BigFloat::from(self.token_b_amount).mul(amount_in_with_fee)) / (BigFloat::from(self.token_a_amount).add(amount_in_with_fee));
-
-        println!("in: {}, fee: {}, out1: {}, out2: {}", amount_in, fee, amount_in_with_fee, amount_out);
 
         amount_out
     }

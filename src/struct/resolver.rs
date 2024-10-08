@@ -1,7 +1,7 @@
 use std::any::Any;
 use solana_sdk::pubkey::Pubkey;
 
-use crate::account::account::{AccountDataSerializer, DeserializedConfigAccount};
+use crate::r#struct::account::{AccountDataSerializer, DeserializedConfigAccount};
 use crate::constants::RAYDIUM_CLMM_DATA_LEN;
 use crate::constants::RAYDIUM_CLMM_PROGRAM_PUBKEY;
 use crate::constants::RAYDIUM_OPEN_BOOK_PROGRAM_PUBKEY;
@@ -49,7 +49,7 @@ pub fn resolve_pool_config_account(market: &Market, owner_pubkey: &Pubkey, accou
                     )
                 }
                 RAYDIUM_OPEN_BOOK_PROGRAM_PUBKEY => {
-                    panic!("unknown account: RaydiumCpmmAccount")
+                    panic!("unknown account: RaydiumOpenBookAccount")
                 }
                 _ => {
                     DeserializedConfigAccount::EmptyConfigAccount

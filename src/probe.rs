@@ -7,24 +7,23 @@ use solana_client::rpc_client::RpcClient;
 use solana_sdk::account::Account;
 use solana_sdk::pubkey::Pubkey;
 use tokio::spawn;
+use tokio::sync::broadcast::Sender;
 use tokio::time::{Instant, sleep};
 
-use crate::account::account::{AccountDataSerializer, DeserializedAccount, DeserializedDataAccount, DeserializedPoolAccount, DeserializedTokenAccount};
-use crate::account::resolver::{resolve_pool_account, resolve_pool_config_account};
-use crate::observer::{Event, Publisher};
+use crate::observer::{Event};
+use crate::r#struct::account::{AccountDataSerializer, DeserializedAccount, DeserializedDataAccount, DeserializedPoolAccount, DeserializedTokenAccount};
 use crate::r#struct::market::Market;
+use crate::r#struct::resolver::{resolve_pool_account, resolve_pool_config_account};
 use crate::r#struct::token::TokenAccount;
 
 pub struct Probe {
-    pub rpc_url: String,
-    pub publisher: Arc<Mutex<Publisher>>
+    pub rpc_url: String
 }
 
 impl Probe {
-    pub fn new(rpc_url: String, publisher: Arc<Mutex<Publisher>>) -> Probe {
+    pub fn new(rpc_url: String) -> Probe {
         Probe {
-            rpc_url,
-            publisher
+            rpc_url
         }
     }
 
@@ -75,11 +74,12 @@ impl Probe {
     pub fn start_watching(
         &self,
         pool_account_bin: Arc<Mutex<Vec<DeserializedPoolAccount>>>,
-        bin: Arc<Mutex<Vec<DeserializedAccount>>>
+        bin: Arc<Mutex<Vec<DeserializedAccount>>>,
+        tx: Sender<Event>
     ) {
         let get_blocks = self.rpc_url.clone();
         let rpc_client = RpcClient::new(get_blocks);
-        let publisher = Arc::clone(&self.publisher);
+        let tx = tx.clone();
 
         let items = Arc::clone(&pool_account_bin).lock().unwrap().iter().map(|account| {
             account.get_swap_related_pubkeys(Some(&rpc_client)).unwrap().into_iter().map(|item| {
@@ -93,7 +93,7 @@ impl Probe {
                     &rpc_client,
                     items.clone(),
                     Arc::clone(&bin),
-                    Some(Arc::clone(&publisher))
+                    Some(tx.clone())
                 );
 
                 let _ = sleep(Duration::from_secs(10)).await;
@@ -105,7 +105,7 @@ impl Probe {
         rpc_client: &RpcClient,
         items: Vec<(Market, DeserializedAccount, Pubkey)>,
         bin: Arc<Mutex<Vec<DeserializedAccount>>>,
-        publisher: Option<Arc<Mutex<Publisher>>>
+        tx: Option<Sender<Event>>
     ) {
         println!("fetching accounts...");
         let time = Instant::now();
@@ -155,9 +155,10 @@ impl Probe {
 
         // todo: replace not overwrite
         *bin.lock().unwrap() = fetched_accounts;
-        if let Some(publisher) = publisher {
-            publisher.lock().unwrap().notify(Event::UpdateAccounts);
+        if let Some(tx) = tx {
+            tx.send(Event::UpdateAccounts).expect("failed to broadcast Event::UpdateAccounts");
         }
+
         println!("{:?}", time.elapsed());
     }
 

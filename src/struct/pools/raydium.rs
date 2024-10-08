@@ -8,15 +8,14 @@ use solana_sdk::account::Account;
 use solana_sdk::account_info::AccountInfo;
 use solana_sdk::pubkey::Pubkey;
 
-use crate::account::account::{AccountDataSerializer, DeserializedAccount, DeserializedConfigAccount, DeserializedTokenAccount};
-use crate::account::account::DeserializedConfigAccount::RaydiumClmmConfigAccount;
 use crate::constants::*;
 use crate::formula::base::Formula;
 use crate::formula::base::Formula::ConcentratedLiquidity;
 use crate::formula::clmm::constant::{MAX_TICK, MIN_TICK, POOL_SEED, REWARD_NUM, TICK_ARRAY_BITMAP_SIZE};
 use crate::formula::clmm::raydium_tick_array::{check_current_tick_array_is_initialized, max_tick_in_tick_array_bitmap, next_initialized_tick_array_start_index, TickArrayBitmapExtension, TickArrayBitmapExtensionAccount, TickArrayState, TickArrayStateAccount};
 use crate::formula::clmm::u256_math::U1024;
-use crate::formula::raydium_clmm::swap_internal;
+use crate::r#struct::account::{AccountDataSerializer, DeserializedAccount, DeserializedConfigAccount, DeserializedTokenAccount};
+use crate::r#struct::account::DeserializedConfigAccount::RaydiumClmmConfigAccount;
 use crate::r#struct::market::{Market, PoolOperation};
 use crate::utils::PubkeyPair;
 
@@ -188,18 +187,27 @@ impl PoolOperation for RaydiumClmmMarket {
             }
         });
 
+        let mut tick_array_states = tick_array_states.into_iter().filter(|tick_array_state| {
+            if zero_for_one {
+                tick_array_state.start_tick_index >= market.tick_current
+            }
+            else {
+                tick_array_state.start_tick_index <= market.tick_current
+            }
+        }).collect::<VecDeque<TickArrayState>>();
+
         let sqrt_price_x64 = market.sqrt_price_x64;
 
-        swap_internal(
-            &amm_config,
-            &mut market,
-            &mut tick_array_states,
-            &Some(&tick_array_bitmap_extension),
-            amount,
-            sqrt_price_x64,
-            zero_for_one,
-            is_base_input
-        ).expect("swap failed");
+        // swap_internal(
+        //     &amm_config,
+        //     &mut market,
+        //     &mut tick_array_states,
+        //     &Some(&tick_array_bitmap_extension),
+        //     amount,
+        //     sqrt_price_x64,
+        //     zero_for_one,
+        //     is_base_input
+        // ).expect("swap failed");
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -229,21 +237,6 @@ impl RaydiumClmmMarket {
                 market: Market::RAYDIUM
             }
         )
-    }
-
-    pub fn is_overflow_default_tick_array_bitmap(&self, tick_index_array: Vec<i32>) -> bool {
-        let (min_tick_array_start_index_boundary, max_tick_array_index_boundary) =
-            self.tick_array_start_index_range();
-        for tick_index in tick_index_array {
-            let tick_array_start_index =
-                TickArrayState::get_array_start_index(tick_index, self.tick_spacing);
-            if tick_array_start_index >= max_tick_array_index_boundary
-                || tick_array_start_index < min_tick_array_start_index_boundary
-            {
-                return true;
-            }
-        }
-        false
     }
 
     pub fn tick_array_start_index_range(&self) -> (i32, i32) {
@@ -342,10 +335,7 @@ impl RaydiumClmmMarket {
     }
 
     pub fn get_tick_array_offset(&self, tick_array_start_index: i32) -> Result<usize, &'static str> {
-        // require!(
-        //     TickArrayState::check_is_valid_start_index(tick_array_start_index, self.tick_spacing),
-        //     ErrorCode::InvaildTickIndex
-        // );
+        assert!(TickArrayState::check_is_valid_start_index(tick_array_start_index, self.tick_spacing));
         let tick_array_offset_in_bitmap = tick_array_start_index
             / TickArrayState::tick_count(self.tick_spacing)
             + TICK_ARRAY_BITMAP_SIZE;
@@ -361,14 +351,14 @@ impl RaydiumClmmMarket {
         Ok(())
     }
 
-    // todo: fix
+    // todo!: fix
     // since flipping is used for when adding or burning liquidity, does not need to fix code for arbitrage
     pub fn flip_tick_array_bit(
         &mut self,
         tick_array_bitmap_extension: Option<&AccountInfo>,
         tick_array_start_index: i32,
     ) -> Result<(), &'static str> {
-        if self.is_overflow_default_tickarray_bitmap(vec![tick_array_start_index]) {
+        if self.is_overflow_default_tick_array_bitmap(vec![tick_array_start_index]) {
             // require_keys_eq!(
             //     tickarray_bitmap_extension.unwrap().key(),
             //     TickArrayBitmapExtension::key(self.key())
@@ -387,7 +377,7 @@ impl RaydiumClmmMarket {
         }
     }
 
-    pub fn is_overflow_default_tickarray_bitmap(&self, tick_indexs: Vec<i32>) -> bool {
+    pub fn is_overflow_default_tick_array_bitmap(&self, tick_indexs: Vec<i32>) -> bool {
         let (min_tick_array_start_index_boundary, max_tick_array_index_boundary) =
             self.tick_array_start_index_range();
         for tick_index in tick_indexs {
@@ -496,7 +486,7 @@ impl AccountDataSerializer for AmmConfig {
             fund_fee_rate: u32::from_le_bytes(*fund_fee_rate),
             padding_u32: u32::from_le_bytes(*padding_u32),
             fund_owner: Pubkey::new_from_array(*fund_owner),
-            padding: [0u64; 3], // temp
+            padding: bytemuck::cast(*padding)
         }
     }
 }
@@ -542,7 +532,7 @@ impl RaydiumClmmAccount {
                 })
             }
             RAYDIUM_CLMM_OBSERVATION_KEY => {
-                // todo("should be implemented")
+                // todo!("should be implemented")
                 RaydiumClmmAccount::ObservationKey
             }
             RAYDIUM_CLMM_TICK_ARRAY_BITMAP_EXTENSION => {

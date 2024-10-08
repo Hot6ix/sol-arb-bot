@@ -7,7 +7,7 @@ use serde::Deserialize;
 use solana_sdk::account::Account;
 use solana_sdk::pubkey::Pubkey;
 
-use crate::account::account::DeserializedAccount;
+use crate::r#struct::account::{DeserializedAccount};
 use crate::formula::base::Formula;
 use crate::utils::PubkeyPair;
 

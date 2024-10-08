@@ -1,7 +1,6 @@
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::account::Account;
 use solana_sdk::pubkey::Pubkey;
-use crate::account::resolver::resolve_pool_account;
 use crate::formula::base::Formula;
 
 use crate::formula::clmm::constant::TICK_ARRAY_SEED;
@@ -9,6 +8,7 @@ use crate::formula::clmm::orca_swap_state::{get_tick_array_public_keys_with_star
 use crate::formula::clmm::raydium_tick_array::{TickArrayBitmapExtension, TickArrayBitmapExtensionAccount, TickArrayState, TickArrayStateAccount};
 use crate::r#struct::market::{Market, PoolOperation};
 use crate::r#struct::pools::{OrcaClmmAccount, OrcaClmmMarket, RaydiumClmmAccount, RaydiumClmmMarket};
+use crate::r#struct::resolver::resolve_pool_account;
 use crate::r#struct::token::TokenAccount;
 
 #[derive(Clone)]

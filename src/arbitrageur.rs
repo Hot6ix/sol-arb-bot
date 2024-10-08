@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use solana_sdk::pubkey::Pubkey;
-use crate::account::account::{DeserializedAccount, DeserializedPoolAccount};
+use crate::r#struct::account::{DeserializedAccount, DeserializedPoolAccount};
 
 pub struct Arbitrageur {
     shared_account_bin: Arc<Mutex<Vec<DeserializedAccount>>>,

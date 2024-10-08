@@ -3,7 +3,7 @@ use num_enum::{TryFromPrimitive};
 use solana_sdk::program_error::ProgramError;
 use solana_sdk::program_option::COption;
 use solana_sdk::pubkey::Pubkey;
-use crate::account::account::AccountDataSerializer;
+use crate::r#struct::account::AccountDataSerializer;
 
 #[repr(u8)]
 #[derive(Clone, Default, Eq, PartialEq, TryFromPrimitive)]

@@ -223,7 +223,7 @@ mod complex_test {
             false,
         );
 
-        println!("{}, {}", amount_1, amount_0);
-        println!("{}, {}", post_swap.amount_b, post_swap.amount_a);
+        println!("raydium: {}, {}", amount_1, amount_0);
+        println!("orca: {}, {}", post_swap.amount_b, post_swap.amount_a);
     }
 }

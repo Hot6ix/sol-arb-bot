@@ -2,7 +2,7 @@ use std::any::Any;
 use arrayref::{array_ref, array_refs};
 use solana_sdk::pubkey::Pubkey;
 
-use crate::account::account::{AccountDataSerializer, DeserializedAccount, DeserializedTokenAccount};
+use crate::r#struct::account::{AccountDataSerializer, DeserializedAccount, DeserializedTokenAccount};
 use crate::formula::base::Formula;
 use crate::formula::base::Formula::ConcentratedLiquidity;
 use crate::r#struct::market::PoolOperation;
