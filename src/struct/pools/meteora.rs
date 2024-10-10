@@ -7,12 +7,12 @@ use crate::formula::base::Formula;
 use crate::formula::base::Formula::DynamicLiquidity;
 use crate::formula::dlmm::bin::{BinArray};
 use crate::formula::dlmm::bin_array_bitmap_extension::BinArrayBitmapExtension;
-use crate::formula::dlmm::constant::{BASIS_POINT_MAX, BIN_ARRAY_BITMAP_SIZE, FEE_PRECISION, MAX_FEE_RATE};
+use crate::formula::dlmm::constant::{BASIS_POINT_MAX, BIN_ARRAY_BITMAP_SIZE, FEE_PRECISION, MAX_BIN_ID, MAX_FEE_RATE, MIN_BIN_ID};
 use crate::formula::dlmm::safe_math::SafeMath;
 use crate::formula::dlmm::u128x128_math::Rounding;
 use crate::formula::dlmm::utils_math::{one, safe_mul_div_cast};
 use crate::formula::meteora_dlmm::{PairStatus, PairType};
-use crate::r#struct::account::{AccountDataSerializer, DeserializedAccount, DeserializedTokenAccount};
+use crate::r#struct::account::{AccountDataSerializer, DeserializedAccount, DeserializedConfigAccount, DeserializedTokenAccount};
 use crate::r#struct::market::{PoolOperation};
 use crate::utils::{PubkeyPair};
 
@@ -53,7 +53,7 @@ pub struct MeteoraClmmMarket {
 impl AccountDataSerializer for MeteoraClmmMarket {
     fn unpack_data(data: &Vec<u8>) -> Self {
         let src = array_ref![data, 0, 904];
-        let (discriminator, parameters, v_parameters, bump_seed, bin_step_seed, pair_type, active_id, bin_step, status, require_base_factor_seed, base_factor_seed, padding1, token_x_mint, token_y_mint, reserve_x, reserve_y, protocol_fee, fee_owner, reward_infos, oracle, bit_array_bitmap, last_updated_at, whitelisted_wallet, pre_activation_swap_address, base_key, activation_slot, pre_activation_slot_duration, padding2, lock_durations_in_slot, creator, reserved) =
+        let (discriminator, parameters, v_parameters, bump_seed, bin_step_seed, pair_type, active_id, bin_step, status, require_base_factor_seed, base_factor_seed, padding1, token_x_mint, token_y_mint, reserve_x, reserve_y, protocol_fee, fee_owner, reward_infos, oracle, bin_array_bitmap, last_updated_at, whitelisted_wallet, pre_activation_swap_address, base_key, activation_slot, pre_activation_slot_duration, padding2, lock_durations_in_slot, creator, reserved) =
             array_refs![src, 8, 32, 32, 1, 2, 1, 4, 2, 1, 1, 2, 2, 32, 32, 32, 32, 16, 32, 288, 32, 128, 8, 32, 32, 32, 8, 8, 8, 8, 32, 24];
 
         MeteoraClmmMarket {
@@ -76,7 +76,7 @@ impl AccountDataSerializer for MeteoraClmmMarket {
             fee_owner: Pubkey::new_from_array(*fee_owner),
             reward_infos: RewardInfo::unpack_data_set(*reward_infos),
             oracle: Pubkey::new_from_array(*oracle),
-            bin_array_bitmap: [0u64; 16], // todo
+            bin_array_bitmap: Self::unpack_data_set(*bin_array_bitmap),
             last_updated_at: 0,
             whitelisted_wallet: Pubkey::new_from_array(*whitelisted_wallet),
             pre_activation_swap_address: Pubkey::new_from_array(*pre_activation_swap_address),
@@ -123,6 +123,18 @@ impl PoolOperation for MeteoraClmmMarket {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+}
+
+impl MeteoraClmmMarket {
+    pub fn unpack_data_set(data: [u8; 128]) -> [u64; 16] {
+        let mut vec: Vec<u64> = Vec::new();
+
+        data.chunks_exact(8).for_each(|array| {
+            vec.push(u64::from_le_bytes(array.try_into().unwrap()))
+        });
+
+        vec.try_into().unwrap()
     }
 }
 
@@ -436,6 +448,36 @@ impl AccountDataSerializer for MeteoraDlmmMarket {
     }
 }
 
+impl PoolOperation for MeteoraDlmmMarket {
+    fn get_mint_pair(&self) -> PubkeyPair {
+        PubkeyPair {
+            pubkey_a: self.token_x_mint,
+            pubkey_b: self.token_y_mint,
+        }
+    }
+
+    fn get_pool_pair(&self) -> PubkeyPair {
+        PubkeyPair {
+            pubkey_a: self.reserve_x,
+            pubkey_b: self.reserve_y,
+        }
+    }
+
+    fn get_swap_related_pubkeys(&self) -> Vec<(DeserializedAccount, Pubkey)> {
+        todo!()
+    }
+
+    fn get_formula(&self) -> Formula {
+        DynamicLiquidity
+    }
+
+    fn swap(&self, accounts: &Vec<DeserializedAccount>) {
+        todo!()
+    }
+
+    fn as_any(&self) -> &dyn Any { self }
+}
+
 impl MeteoraDlmmMarket {
     pub fn unpack_data_set(data: [u8; 128]) -> [u64; 16] {
         let mut vec: Vec<u64> = Vec::new();
@@ -482,6 +524,7 @@ impl MeteoraDlmmMarket {
         //     next_active_bin_id >= MIN_BIN_ID && next_active_bin_id <= MAX_BIN_ID,
         //     LBError::PairInsufficientLiquidity
         // );
+        assert!(next_active_bin_id >= MIN_BIN_ID && next_active_bin_id <= MAX_BIN_ID);
 
         self.active_id = next_active_bin_id;
 

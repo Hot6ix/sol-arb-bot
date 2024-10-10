@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use log::debug;
 
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
@@ -72,46 +73,57 @@ async fn main() {
     let mint = Pubkey::from_str("So11111111111111111111111111111111111111112").unwrap();
     path_finder.resolve_path(mint);
 
-    let (tx, mut rx1) = broadcast::channel(5);
-    tx.send(Event::Initialized).expect("failed to broadcast");
+    let (tx, mut rx) = broadcast::channel(10);
+    tx.send(Event::Initialized).expect("broadcast: failed to broadcast");
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // collect swap-related pubkeys from pool accounts
     probe.start_watching(Arc::clone(&pool_account_bin), Arc::clone(&shared_account_bin), tx.clone());
-    // setup and arbitrage
 
-    // todo: put this code into observer function
+    // setup and run arbitrage
     let shared_pool_account_bin = Arc::clone(&shared_account_bin);
     let path_list = Arc::clone(&path_list);
     let rpc_client = RpcClient::new(rpc_url.clone());
+    let mut rx1 = tx.subscribe();
     spawn(async move {
-        if let Ok(event) = rx1.recv().await {
-            println!("event received: {:?}", event);
-            match event {
-                Event::Initialized => {}
-                Event::UpdateAccounts => {
-                    let path_list = path_list.lock().unwrap().clone();
+        loop {
+            if !rx1.is_empty() {
+                match rx1.recv().await {
+                    Ok(event) => {
+                        debug!("broadcast: event received: {:?}", event);
+                        match event {
+                            Event::Initialized => {}
+                            Event::UpdateAccounts => {
+                                let path_list = path_list.lock().unwrap().clone();
 
-                    let target = path_list.iter().find(|path| {
-                        *path.0 == mint
-                    }).expect(format!("no path for mint: {}", mint).as_str());
+                                let target = path_list.iter().find(|path| {
+                                    *path.0 == mint
+                                }).expect(format!("path: path not found for mint: {}", mint).as_str());
 
-                    target.1.iter().for_each(|pool| {
-                        let related_pubkeys = pool.get_swap_related_pubkeys(Some(&rpc_client)).unwrap();
+                                target.1.iter().for_each(|pool| {
+                                    let related_pubkeys = pool.get_swap_related_pubkeys(Some(&rpc_client)).unwrap();
 
-                        let related_accounts = shared_pool_account_bin.lock().unwrap().clone().into_iter().filter(|account| {
-                            related_pubkeys.iter().find(|(_, pubkey)| {
-                                *pubkey == account.get_pubkey()
-                            }).is_some()
-                        }).collect::<Vec<DeserializedAccount>>();
+                                    let related_accounts = shared_pool_account_bin.lock().unwrap().clone().into_iter().filter(|account| {
+                                        related_pubkeys.iter().find(|(_, pubkey)| {
+                                            *pubkey == account.get_pubkey()
+                                        }).is_some()
+                                    }).collect::<Vec<DeserializedAccount>>();
 
-                        // target.1.iter().for_each(|pool| {
-                        //     pool.operation.swap(&related_accounts);
-                        // });
-                    });
+                                    target.1.iter().for_each(|pool| {
+                                        pool.operation.swap(&related_accounts);
+                                    });
+                                });
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        eprintln!("broadcast: nothing to receive");
+                    }
                 }
             }
+
+            sleep(Duration::from_secs(1)).await;
         }
     });
 

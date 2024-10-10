@@ -15,7 +15,6 @@ pub struct PathFinder {
 
 impl PathFinder {
     pub fn resolve_path(&self, mint: Pubkey) {
-        println!("start resolving path");
         let t = Instant::now();
         let path: Rc<RefCell<Vec<DeserializedPoolAccount>>> = Rc::new(RefCell::new(Vec::new()));
         let len = (*Arc::clone(&self.pool_accounts).lock().unwrap()).len();
@@ -31,7 +30,7 @@ impl PathFinder {
             )
         }
 
-        println!("done: {:?}", t.elapsed());
+        println!("path: path resolved ({:?})", t.elapsed());
     }
 
     fn find_path(

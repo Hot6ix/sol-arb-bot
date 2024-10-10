@@ -1,6 +1,7 @@
 use std::ops::{Add, Mul, Sub};
 use num_bigfloat::BigFloat;
 
+// not used
 pub struct DefaultConstantProduct {
     pub token_a_amount: u64,
     pub token_b_amount: u64,

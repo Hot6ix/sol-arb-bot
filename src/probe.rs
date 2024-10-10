@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use log::debug;
 
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::account::Account;
@@ -35,7 +36,7 @@ impl Probe {
     ) {
         let rpc_client: RpcClient = RpcClient::new(&self.rpc_url);
 
-        println!("fetching market pools...");
+        debug!("probe: fetching market pools...");
         let fetched_markets = pools.lock().unwrap().iter().map(|pools| {
             let accounts = Self::_fetch_accounts(&rpc_client, pools.1);
 
@@ -107,10 +108,8 @@ impl Probe {
         bin: Arc<Mutex<Vec<DeserializedAccount>>>,
         tx: Option<Sender<Event>>
     ) {
-        println!("fetching accounts...");
         let time = Instant::now();
         let pubkeys = items.iter().map(|item| { item.2 }).collect::<Vec<Pubkey>>();
-        // pubkeys.iter().for_each(|x| { println!("{}", x) });
         let accounts = Self::_fetch_accounts(&rpc_client, &pubkeys);
 
         let fetched_accounts = accounts.iter().enumerate().filter(|(index, account)| {
@@ -156,10 +155,10 @@ impl Probe {
         // todo: replace not overwrite
         *bin.lock().unwrap() = fetched_accounts;
         if let Some(tx) = tx {
-            tx.send(Event::UpdateAccounts).expect("failed to broadcast Event::UpdateAccounts");
+            tx.send(Event::UpdateAccounts).expect("broadcast: failed to broadcast Event::UpdateAccounts");
         }
 
-        println!("{:?}", time.elapsed());
+        println!("probe: accounts fetched ({:?})", time.elapsed());
     }
 
     fn _fetch_accounts(
@@ -174,7 +173,7 @@ impl Probe {
                     vec.append(accounts.as_mut())
                 }
                 Err(err) => {
-                    eprintln!("failed to fetch pubkeys: {}", err);
+                    eprintln!("probe: failed to fetch pubkeys: {}", err);
                 }
             }
         });
